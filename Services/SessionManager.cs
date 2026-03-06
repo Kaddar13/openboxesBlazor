@@ -54,7 +54,16 @@ public sealed class SessionManager
         {
             _debug.Info("Session", $"Login attempt for '{username}'");
             await _apiClient.LoginAsync(username, password, cancellationToken);
-            var session = await _apiClient.GetSessionAsync(cancellationToken);
+            Session? session;
+            try
+            {
+                session = await _apiClient.GetSessionAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _debug.Error("Session", $"getAppContext failed after login: {ex.Message}");
+                session = null;
+            }
 
             if (session?.User is null)
             {
