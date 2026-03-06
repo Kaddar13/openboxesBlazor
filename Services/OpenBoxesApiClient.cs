@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Diagnostics;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
@@ -76,7 +77,15 @@ public sealed class OpenBoxesApiClient : IDisposable
 
     public async Task<Session?> GetSessionAsync(CancellationToken cancellationToken = default)
     {
-        return await SendAsync<Session>(HttpMethod.Get, "getAppContext", null, cancellationToken);
+        try
+        {
+            return await SendAsync<Session>(HttpMethod.Get, "getAppContext", null, cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Non-JSON response", StringComparison.OrdinalIgnoreCase))
+        {
+            _debug.Info("Session", "getAppContext returned HTML response; treating as unauthenticated session.");
+            return null;
+        }
     }
 
     public async Task LoginAsync(string username, string password, CancellationToken cancellationToken = default)
@@ -383,6 +392,7 @@ public sealed class OpenBoxesApiClient : IDisposable
         var sw = Stopwatch.StartNew();
         _debug.Info("HTTP", $"{method} {endpoint}");
         using var request = new HttpRequestMessage(method, endpoint);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         if (payload is not null)
         {
@@ -423,6 +433,11 @@ public sealed class OpenBoxesApiClient : IDisposable
                 return default;
             }
 
+            if (LooksLikeHtml(text))
+            {
+                throw new InvalidOperationException(BuildNonJsonMessage(endpoint, text));
+            }
+
             return JsonSerializer.Deserialize<T>(text, _jsonOptions);
         }
     }
@@ -436,6 +451,7 @@ public sealed class OpenBoxesApiClient : IDisposable
         var sw = Stopwatch.StartNew();
         _debug.Info("HTTP", $"{method} {endpoint}");
         using var request = new HttpRequestMessage(method, endpoint);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         if (payload is not null)
         {
@@ -469,6 +485,11 @@ public sealed class OpenBoxesApiClient : IDisposable
             if (string.IsNullOrWhiteSpace(text))
             {
                 return null;
+            }
+
+            if (LooksLikeHtml(text))
+            {
+                throw new InvalidOperationException(BuildNonJsonMessage(endpoint, text));
             }
 
             return JsonNode.Parse(text);
@@ -541,5 +562,16 @@ public sealed class OpenBoxesApiClient : IDisposable
         }
 
         return trimmed.TrimEnd('/') + '/';
+    }
+
+    private static bool LooksLikeHtml(string text)
+    {
+        return text.TrimStart().StartsWith("<", StringComparison.Ordinal);
+    }
+
+    private static string BuildNonJsonMessage(string endpoint, string body)
+    {
+        var excerpt = body.Length <= 140 ? body : body[..140];
+        return $"Non-JSON response on '{endpoint}'. First bytes: {excerpt}";
     }
 }
