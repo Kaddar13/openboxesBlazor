@@ -57,6 +57,10 @@
         {
             Navigation.NavigateTo("dashboard", true);
         }
+        else if (!string.IsNullOrWhiteSpace(AppState.LastError))
+        {
+            _error = AppState.LastError;
+        }
 
         StateHasChanged();
     }

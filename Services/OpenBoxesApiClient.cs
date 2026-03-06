@@ -31,6 +31,20 @@ public sealed class OpenBoxesApiClient : IDisposable
 
     public string BaseUrl => _baseUrl;
 
+    public async Task<bool> CanReachServerAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, string.Empty);
+            using var response = await _client.SendAsync(request, cancellationToken);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public void SetBaseUrl(string baseUrl)
     {
         var normalized = baseUrl.Trim().TrimEnd('/') + '/';
@@ -359,30 +373,40 @@ public sealed class OpenBoxesApiClient : IDisposable
             request.Content = JsonContent.Create(payload);
         }
 
-        using var response = await _client.SendAsync(request, cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            var message = string.IsNullOrWhiteSpace(body)
-                ? $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}"
-                : body;
-
-            throw new InvalidOperationException(message);
+            response = await _client.SendAsync(request, cancellationToken);
         }
-
-        if (typeof(T) == typeof(object) || response.Content.Headers.ContentLength == 0)
+        catch (Exception ex)
         {
-            return default;
+            throw BuildNetworkError(ex, endpoint);
         }
-
-        var text = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(text))
+        using (response)
         {
-            return default;
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                var message = string.IsNullOrWhiteSpace(body)
+                    ? $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}"
+                    : body;
 
-        return JsonSerializer.Deserialize<T>(text, _jsonOptions);
+                throw new InvalidOperationException(message);
+            }
+
+            if (typeof(T) == typeof(object) || response.Content.Headers.ContentLength == 0)
+            {
+                return default;
+            }
+
+            var text = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return default;
+            }
+
+            return JsonSerializer.Deserialize<T>(text, _jsonOptions);
+        }
     }
 
     private async Task<JsonNode?> SendJsonAsync(
@@ -398,25 +422,35 @@ public sealed class OpenBoxesApiClient : IDisposable
             request.Content = JsonContent.Create(payload);
         }
 
-        using var response = await _client.SendAsync(request, cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            var message = string.IsNullOrWhiteSpace(body)
-                ? $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}"
-                : body;
-
-            throw new InvalidOperationException(message);
+            response = await _client.SendAsync(request, cancellationToken);
         }
-
-        var text = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(text))
+        catch (Exception ex)
         {
-            return null;
+            throw BuildNetworkError(ex, endpoint);
         }
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                var message = string.IsNullOrWhiteSpace(body)
+                    ? $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}"
+                    : body;
 
-        return JsonNode.Parse(text);
+                throw new InvalidOperationException(message);
+            }
+
+            var text = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            return JsonNode.Parse(text);
+        }
     }
 
     public void Dispose()
@@ -435,7 +469,19 @@ public sealed class OpenBoxesApiClient : IDisposable
 
         return new HttpClient(handler)
         {
-            BaseAddress = new Uri(baseUrl)
+            BaseAddress = new Uri(baseUrl),
+            Timeout = TimeSpan.FromSeconds(20)
+        };
+    }
+
+    private InvalidOperationException BuildNetworkError(Exception ex, string endpoint)
+    {
+        var url = new Uri(new Uri(_baseUrl), endpoint).ToString();
+        return ex switch
+        {
+            TaskCanceledException => new InvalidOperationException($"Request timeout while calling {url}", ex),
+            HttpRequestException => new InvalidOperationException($"Network error while calling {url}: {ex.Message}", ex),
+            _ => new InvalidOperationException($"Request failed while calling {url}: {ex.Message}", ex)
         };
     }
 }

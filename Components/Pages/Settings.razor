@@ -170,7 +170,12 @@
         {
             UiSettings.Current.ServerUrl = normalized;
             ApiClient.SetBaseUrl(normalized);
-            await ApiClient.GetSessionAsync();
+            var reachable = await ApiClient.CanReachServerAsync();
+            if (!reachable)
+            {
+                _error = $"Unable to reach server URL: {normalized}";
+                return;
+            }
             await UiSettings.SaveAsync();
             _serverUrl = normalized;
             _message = "Server URL saved and reachable.";
@@ -202,7 +207,12 @@
         try
         {
             ApiClient.SetBaseUrl(UiSettings.Current.ServerUrl);
-            await ApiClient.GetSessionAsync();
+            var reachable = await ApiClient.CanReachServerAsync();
+            if (!reachable)
+            {
+                _error = $"Unable to reach server URL: {normalized}";
+                return;
+            }
             await UiSettings.SaveAsync();
             _serverUrl = normalized;
             _message = "Settings saved and applied.";
