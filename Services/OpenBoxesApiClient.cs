@@ -13,9 +13,9 @@ namespace OpenBoxesMobile.Blazor.Services;
 
 public sealed class OpenBoxesApiClient : IDisposable
 {
-    private HttpClient _client;
-    private CookieContainer _cookieContainer;
-    private string _baseUrl;
+    private HttpClient? _client;
+    private CookieContainer? _cookieContainer;
+    private string _baseUrl = string.Empty;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -24,15 +24,21 @@ public sealed class OpenBoxesApiClient : IDisposable
     public OpenBoxesApiClient(IOptions<OpenBoxesApiOptions> options)
     {
         var apiOptions = options.Value;
-        _baseUrl = apiOptions.BaseUrl.TrimEnd('/') + '/';
-        _cookieContainer = new CookieContainer();
-        _client = BuildClient(_baseUrl, _cookieContainer);
+        if (!string.IsNullOrWhiteSpace(apiOptions.BaseUrl))
+        {
+            SetBaseUrl(apiOptions.BaseUrl);
+        }
     }
 
     public string BaseUrl => _baseUrl;
 
     public async Task<bool> CanReachServerAsync(CancellationToken cancellationToken = default)
     {
+        if (_client is null)
+        {
+            return false;
+        }
+
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, string.Empty);
@@ -47,7 +53,9 @@ public sealed class OpenBoxesApiClient : IDisposable
 
     public void SetBaseUrl(string baseUrl)
     {
-        var normalized = baseUrl.Trim().TrimEnd('/') + '/';
+        var normalized = NormalizeBaseUrl(baseUrl)
+            ?? throw new InvalidOperationException("API base URL is invalid. Use an absolute http(s) URL.");
+
         if (string.Equals(_baseUrl, normalized, StringComparison.OrdinalIgnoreCase))
         {
             return;
@@ -55,7 +63,7 @@ public sealed class OpenBoxesApiClient : IDisposable
 
         _baseUrl = normalized;
 
-        _client.Dispose();
+        _client?.Dispose();
         _cookieContainer = new CookieContainer();
         _client = BuildClient(_baseUrl, _cookieContainer);
     }
@@ -376,7 +384,7 @@ public sealed class OpenBoxesApiClient : IDisposable
         HttpResponseMessage response;
         try
         {
-            response = await _client.SendAsync(request, cancellationToken);
+            response = await GetClient().SendAsync(request, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -425,7 +433,7 @@ public sealed class OpenBoxesApiClient : IDisposable
         HttpResponseMessage response;
         try
         {
-            response = await _client.SendAsync(request, cancellationToken);
+            response = await GetClient().SendAsync(request, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -455,7 +463,7 @@ public sealed class OpenBoxesApiClient : IDisposable
 
     public void Dispose()
     {
-        _client.Dispose();
+        _client?.Dispose();
     }
 
     private static HttpClient BuildClient(string baseUrl, CookieContainer cookieContainer)
@@ -483,5 +491,32 @@ public sealed class OpenBoxesApiClient : IDisposable
             HttpRequestException => new InvalidOperationException($"Network error while calling {url}: {ex.Message}", ex),
             _ => new InvalidOperationException($"Request failed while calling {url}: {ex.Message}", ex)
         };
+    }
+
+    private HttpClient GetClient()
+    {
+        return _client ?? throw new InvalidOperationException(
+            "API base URL is not configured. Set it in Settings before using the app.");
+    }
+
+    private static string? NormalizeBaseUrl(string value)
+    {
+        var trimmed = value.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+        {
+            return null;
+        }
+
+        return trimmed.TrimEnd('/') + '/';
     }
 }

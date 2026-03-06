@@ -49,12 +49,16 @@ public sealed class UiSettingsService
             // Ignore storage access failures and keep defaults.
         }
 
-        if (string.IsNullOrWhiteSpace(Current.ServerUrl))
+        if (string.IsNullOrWhiteSpace(Current.ServerUrl) && !string.IsNullOrWhiteSpace(defaultServerUrl))
         {
             Current.ServerUrl = defaultServerUrl;
         }
 
-        _apiClient.SetBaseUrl(Current.ServerUrl);
+        if (!string.IsNullOrWhiteSpace(Current.ServerUrl))
+        {
+            _apiClient.SetBaseUrl(Current.ServerUrl);
+        }
+
         Loaded = true;
         Notify();
     }
