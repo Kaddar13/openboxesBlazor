@@ -1,0 +1,44 @@
+@page "/pending-putaways"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Pending Putaways</PageTitle>
+
+<h1>Pending Putaways</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error)) { <div class="alert alert-danger">@_error</div> }
+@if (_loading) { <p>Loading pending putaways...</p> }
+else
+{
+    <table class="table table-striped">
+        <thead><tr><th>ID</th><th>Status</th><th>Product</th><th>Container</th></tr></thead>
+        <tbody>
+        @foreach (var item in _items)
+        {
+            <tr>
+                <td>@JsonNodeHelpers.Get(item, "id")</td>
+                <td>@JsonNodeHelpers.Get(item, "status")</td>
+                <td>@JsonNodeHelpers.Get(item, "product.name")</td>
+                <td>@JsonNodeHelpers.Get(item, "container.name")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private IReadOnlyList<JsonObject> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null) { Navigation.NavigateTo("/login", true); return; }
+
+        try { _items = JsonNodeHelpers.ToObjectList(await ApiClient.GetPutawaysAsync()); }
+        catch (Exception ex) { _error = ex.Message; }
+        _loading = false;
+    }
+}

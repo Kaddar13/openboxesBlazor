@@ -1,0 +1,158 @@
+@page "/loading/{ShipmentId}/container/{ContainerId}"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Load Container</PageTitle>
+
+<h1>Load Container</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="alert alert-success">@_message</div>
+}
+
+@if (_loading)
+{
+    <p>Loading...</p>
+}
+else if (_shipment is null || _container is null)
+{
+    <div class="ob-empty-state"><p>Container not found.</p></div>
+}
+else
+{
+    <div class="ob-card">
+        <div class="d-flex justify-content-between align-items-center">
+            <strong>@JsonNodeHelpers.Get(_shipment, "shipmentNumber")</strong>
+            <span class="badge text-dark" style="background:#FCFFC1">@JsonNodeHelpers.Get(_shipment, "status")</span>
+        </div>
+        <hr />
+        <div><strong>Destination:</strong> @JsonNodeHelpers.Get(_shipment, "destination.name")</div>
+        <div class="row mt-3">
+            <div class="col-6"><span class="ob-muted">Expected LPN</span><div>@JsonNodeHelpers.Get(_container, "containerNumber")</div></div>
+            <div class="col-6"><span class="ob-muted">Expected Loading Location</span><div>@JsonNodeHelpers.Get(_shipment, "loadingLocationNumber", "DEFAULT (empty)")</div></div>
+        </div>
+    </div>
+
+    <div class="ob-card">
+        <div class="row g-2">
+            <div class="col-12 col-md-6">
+                <label class="form-label">LPN's Container Number</label>
+                <input class="form-control" @bind="_scannedLpn" />
+            </div>
+            <div class="col-12 col-md-6">
+                <label class="form-label">Loading Location</label>
+                <input class="form-control" @bind="_scannedLoadingLocation" />
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-ob-primary" @onclick="LoadContainer" disabled="@_submitting">@(_submitting ? "Loading..." : "Load Container")</button>
+            <a class="btn btn-outline-secondary" href="/loading/@ShipmentId">Back</a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string ShipmentId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string ContainerId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private bool _submitting;
+    private string? _error;
+    private string? _message;
+
+    private JsonObject? _shipment;
+    private JsonObject? _container;
+
+    private string _scannedLpn = string.Empty;
+    private string _scannedLoadingLocation = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            _shipment = await ApiClient.GetShipmentAsync(ShipmentId) as JsonObject;
+            _container = JsonNodeHelpers.ToObjectList(_shipment?["containers"])
+                .FirstOrDefault(c => JsonNodeHelpers.Get(c, "id", string.Empty) == ContainerId);
+
+            _scannedLpn = JsonNodeHelpers.Get(_container ?? new JsonObject(), "containerNumber", string.Empty);
+            _scannedLoadingLocation = JsonNodeHelpers.Get(_shipment ?? new JsonObject(), "loadingLocationNumber", string.Empty);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _shipment = null;
+            _container = null;
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadContainer()
+    {
+        _error = null;
+        _message = null;
+
+        var expectedLpn = JsonNodeHelpers.Get(_container ?? new JsonObject(), "containerNumber", string.Empty);
+        var expectedLoadingLocation = JsonNodeHelpers.Get(_shipment ?? new JsonObject(), "loadingLocationNumber", string.Empty);
+
+        var lpnValid = string.Equals(expectedLpn, _scannedLpn, StringComparison.OrdinalIgnoreCase);
+        var locationValid = string.IsNullOrWhiteSpace(expectedLoadingLocation)
+            || string.Equals(expectedLoadingLocation, _scannedLoadingLocation, StringComparison.OrdinalIgnoreCase);
+
+        if (!lpnValid)
+        {
+            _error = "LPN Container Number is invalid. Scan proper LPN Container Number.";
+            return;
+        }
+
+        if (!locationValid)
+        {
+            _error = "Loading Location is invalid. Scanned Loading Location is not for this load.";
+            return;
+        }
+
+        object payload = string.IsNullOrWhiteSpace(expectedLoadingLocation) && !string.IsNullOrWhiteSpace(_scannedLoadingLocation)
+            ? new { status = "LOADED", loadingLocation = _scannedLoadingLocation }
+            : new { status = "LOADED" };
+
+        _submitting = true;
+        try
+        {
+            await ApiClient.UpdateContainerStatusAsync(ContainerId, payload);
+            _message = "Loaded container successfully.";
+            Navigation.NavigateTo($"/loading/{ShipmentId}", true);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+
+        _submitting = false;
+    }
+}

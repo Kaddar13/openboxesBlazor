@@ -1,0 +1,140 @@
+@page "/locations"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject UiSettingsService UiSettings
+@inject NavigationManager Navigation
+
+<PageTitle>Choose Location</PageTitle>
+
+<h1>Choose Location</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+@if (_loading)
+{
+    <p>Loading locations...</p>
+}
+else if (_locations.Count == 0)
+{
+    <div class="ob-empty-state">
+        <h2>No Locations Available</h2>
+        <p>Please contact your administrator to set up locations.</p>
+    </div>
+}
+else if (_groupLocations)
+{
+    <div class="accordion" id="locationsAccordion">
+        @foreach (var group in GetGroups())
+        {
+            var collapseId = $"collapse-{group.Organization.GetHashCode()}";
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#@collapseId">
+                        @group.Organization (@group.Items.Count)
+                    </button>
+                </h2>
+                <div id="@collapseId" class="accordion-collapse collapse" data-bs-parent="#locationsAccordion">
+                    <div class="accordion-body p-2">
+                        @foreach (var location in group.Items)
+                        {
+                            <button class="ob-location-item @(IsSelected(location) ? "selected" : null)" @onclick="() => SelectLocation(location.Id)">
+                                <div class="ob-location-title">@location.Name</div>
+                                <div class="ob-location-subtitle">@(location.LocationGroup?.Name ?? "NO_LOCATION_GROUP_PROVIDED")</div>
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="ob-location-list">
+        @foreach (var location in _locations.OrderBy(x => x.Name))
+        {
+            <button class="ob-location-card @(IsSelected(location) ? "selected" : null)" @onclick="() => SelectLocation(location.Id)">
+                <div class="ob-location-icon">W</div>
+                <div>
+                    <div class="ob-location-title">@location.Name</div>
+                    <div class="ob-location-subtitle">@(location.LocationGroup?.Name ?? "NO_LOCATION_GROUP_PROVIDED")</div>
+                </div>
+            </button>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _groupLocations;
+    private string? _error;
+    private IReadOnlyList<Location> _locations = [];
+    private string? _currentLocationId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await UiSettings.EnsureLoadedAsync(ApiClient.BaseUrl);
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        _groupLocations = UiSettings.Current.GroupLocationEntries;
+        _currentLocationId = session.Location?.Id;
+        await LoadLocations();
+        StateHasChanged();
+    }
+
+    private async Task LoadLocations()
+    {
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            _locations = (await ApiClient.GetLocationsAsync()).OrderBy(x => x.Name).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+
+        _loading = false;
+    }
+
+    private bool IsSelected(Location location) => !string.IsNullOrWhiteSpace(_currentLocationId) && location.Id == _currentLocationId;
+
+    private IEnumerable<(string Organization, List<Location> Items)> GetGroups()
+    {
+        const string noOrg = "No organization";
+        return _locations
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.OrganizationName) ? noOrg : x.OrganizationName!)
+            .OrderBy(x => x.Key == noOrg ? "zzzzzz" : x.Key)
+            .Select(g => (g.Key, g.OrderBy(x => x.Name).ToList()));
+    }
+
+    private async Task SelectLocation(string locationId)
+    {
+        try
+        {
+            await ApiClient.SetCurrentLocationAsync(locationId);
+            var session = await SessionManager.EnsureSessionAsync(forceRefresh: true);
+            _currentLocationId = session?.Location?.Id;
+            Navigation.NavigateTo("/dashboard", true);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

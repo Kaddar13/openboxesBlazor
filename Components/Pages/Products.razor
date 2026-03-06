@@ -1,0 +1,231 @@
+@page "/products"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Products</PageTitle>
+
+<h1>Products</h1>
+
+<div class="ob-card">
+    <div class="row g-2">
+        <div class="col-12 col-md-4">
+            <label class="form-label">Search by Name</label>
+            <input class="form-control" @bind="_searchName" placeholder="Product name" />
+        </div>
+        <div class="col-12 col-md-4">
+            <label class="form-label">Search by Product Code</label>
+            <input class="form-control" @bind="_searchCode" placeholder="Product code" />
+        </div>
+        <div class="col-12 col-md-4">
+            <label class="form-label">Global Search (barcode/code/name)</label>
+            <input class="form-control" @bind="_searchGlobal" placeholder="Scan or type" />
+        </div>
+    </div>
+    <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-ob-primary" @onclick="SearchByName">Search Name</button>
+        <button class="btn btn-ob-primary" @onclick="SearchByCode">Search Code</button>
+        <button class="btn btn-ob-primary" @onclick="SearchGlobal">Global Search</button>
+        <button class="btn btn-outline-secondary" @onclick="Reset">Reset</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+@if (_loading)
+{
+    <p>Loading products...</p>
+}
+else if (_products.Count == 0)
+{
+    <div class="ob-empty-state"><p>No products found.</p></div>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Description</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var product in _products)
+            {
+                <tr>
+                    <td>@product.ProductCode</td>
+                    <td>@product.Name</td>
+                    <td>@product.Description</td>
+                    <td>
+                        <a class="btn btn-sm btn-ob-primary" href="/products/@product.Id">Details</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading;
+    private string _searchName = string.Empty;
+    private string _searchCode = string.Empty;
+    private string _searchGlobal = string.Empty;
+    private string? _error;
+    private IReadOnlyList<Product> _products = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await LoadProducts();
+    }
+
+    private async Task LoadProducts()
+    {
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            _products = await ApiClient.GetProductsAsync();
+            if (_products.Count == 0)
+            {
+                _error = "No products found";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _products = [];
+        }
+
+        _loading = false;
+    }
+
+    private async Task Reset()
+    {
+        _searchName = string.Empty;
+        _searchCode = string.Empty;
+        _searchGlobal = string.Empty;
+        await LoadProducts();
+    }
+
+    private async Task SearchByName()
+    {
+        if (string.IsNullOrWhiteSpace(_searchName))
+        {
+            _error = "Search query is empty";
+            return;
+        }
+
+        _loading = true;
+        _error = null;
+        try
+        {
+            _products = await ApiClient.SearchProductsByNameAsync(_searchName.Trim());
+            if (_products.Count == 1)
+            {
+                Navigation.NavigateTo($"/products/{_products[0].Id}");
+                return;
+            }
+            if (_products.Count == 0)
+            {
+                _error = $"No search results found for product name '{_searchName}'";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _products = [];
+        }
+        _loading = false;
+    }
+
+    private async Task SearchByCode()
+    {
+        if (string.IsNullOrWhiteSpace(_searchCode))
+        {
+            _error = "Search query is empty";
+            return;
+        }
+
+        _loading = true;
+        _error = null;
+        try
+        {
+            _products = await ApiClient.SearchProductByCodeAsync(_searchCode.Trim());
+            if (_products.Count == 1)
+            {
+                Navigation.NavigateTo($"/products/{_products[0].Id}");
+                return;
+            }
+            if (_products.Count == 0)
+            {
+                _error = $"No search results found for product code '{_searchCode}'";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _products = [];
+        }
+        _loading = false;
+    }
+
+    private async Task SearchGlobal()
+    {
+        if (string.IsNullOrWhiteSpace(_searchGlobal))
+        {
+            _error = "Search query is empty";
+            return;
+        }
+
+        _loading = true;
+        _error = null;
+        try
+        {
+            var raw = await ApiClient.SearchProductGloballyAsync(_searchGlobal.Trim());
+            var items = JsonNodeHelpers.ToObjectList(raw? ["data"] ?? raw);
+            _products = items.Select(ToProduct).Where(p => !string.IsNullOrWhiteSpace(p.Id)).ToList();
+
+            if (_products.Count == 1)
+            {
+                Navigation.NavigateTo($"/products/{_products[0].Id}");
+                return;
+            }
+
+            if (_products.Count == 0)
+            {
+                _error = $"No search results found for '{_searchGlobal}'";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _products = [];
+        }
+
+        _loading = false;
+    }
+
+    private static Product ToProduct(JsonObject item)
+    {
+        return new Product
+        {
+            Id = JsonNodeHelpers.Get(item, "id", string.Empty),
+            ProductCode = JsonNodeHelpers.Get(item, "productCode", string.Empty),
+            Name = JsonNodeHelpers.Get(item, "name", string.Empty),
+            Description = JsonNodeHelpers.Get(item, "description", string.Empty)
+        };
+    }
+}

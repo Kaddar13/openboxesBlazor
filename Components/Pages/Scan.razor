@@ -1,0 +1,51 @@
+@page "/scan"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Scan</PageTitle>
+
+<h1>Scan</h1>
+
+<div class="row g-2 mb-3">
+    <div class="col-12 col-md-8"><input class="form-control" @bind="_barcode" placeholder="Scan / barcode" /></div>
+    <div class="col-12 col-md-2 d-grid"><button class="btn btn-primary" @onclick="Search">Search</button></div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error)) { <div class="alert alert-danger">@_error</div> }
+@if (!string.IsNullOrWhiteSpace(_result))
+{
+    <h2>Result</h2>
+    <pre>@_result</pre>
+}
+
+@code {
+    private string _barcode = string.Empty;
+    private string? _error;
+    private string? _result;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null) { Navigation.NavigateTo("/login", true); }
+    }
+
+    private async Task Search()
+    {
+        _error = null;
+        _result = null;
+
+        if (string.IsNullOrWhiteSpace(_barcode))
+        {
+            _error = "Barcode is required.";
+            return;
+        }
+
+        try
+        {
+            var node = await ApiClient.SearchBarcodeAsync(_barcode.Trim());
+            _result = node?.ToJsonString(new() { WriteIndented = true }) ?? "No result";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+}

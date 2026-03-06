@@ -1,0 +1,24 @@
+@page "/"
+@inject SessionManager SessionManager
+@inject NavigationManager Navigation
+@inject UiSettingsService UiSettings
+@inject OpenBoxesApiClient ApiClient
+
+<PageTitle>OpenBoxes Mobile</PageTitle>
+
+<h1>OpenBoxes Mobile</h1>
+<p>Initialisation de la session...</p>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await UiSettings.EnsureLoadedAsync(ApiClient.BaseUrl);
+        var session = await SessionManager.EnsureSessionAsync();
+        Navigation.NavigateTo(session?.User is null ? "/login" : "/dashboard", true);
+    }
+}

@@ -1,0 +1,170 @@
+@page "/packing/{ShipmentId}"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Packing Details</PageTitle>
+
+<h1>Packing Details</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_loading)
+{
+    <p>Loading...</p>
+}
+else if (_shipment is null)
+{
+    <div class="ob-empty-state"><p>Shipment not found.</p></div>
+}
+else
+{
+    <div class="ob-card">
+        <div class="d-flex justify-content-between align-items-center">
+            <strong>@JsonNodeHelpers.Get(_shipment, "shipmentNumber")</strong>
+            <span class="badge text-dark" style="background:#FCFFC1">@JsonNodeHelpers.Get(_shipment, "status")</span>
+        </div>
+        <hr />
+        <div><strong>Destination:</strong> @JsonNodeHelpers.Get(_shipment, "destination.name")</div>
+        <div class="mt-2"><span class="badge bg-light text-dark border">Expected Shipping: @JsonNodeHelpers.Get(_shipment, "expectedShippingDate")</span></div>
+        <div class="row mt-3">
+            <div class="col-6"><span class="ob-muted">Packing Location</span><div>@JsonNodeHelpers.Get(_shipment, "packingLocation", "-")</div></div>
+            <div class="col-6"><span class="ob-muted">Loading Location</span><div>@JsonNodeHelpers.Get(_shipment, "loadingLocation", "-")</div></div>
+        </div>
+    </div>
+
+    <div class="ob-card">
+        <div class="row g-2">
+            <div class="col-12 col-md-8"><input class="form-control" @bind="_scan" placeholder="Enter a lot number, item, or container" /></div>
+            <div class="col-12 col-md-4 d-grid d-md-flex gap-2">
+                <button class="btn btn-ob-primary" @onclick="OnScan">Search</button>
+                <button class="btn btn-outline-secondary" @onclick="ResetScan">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    @foreach (var sec in _sections)
+    {
+        <div class="ob-card mb-2">
+            <h2>@sec.Title</h2>
+            @foreach (var item in sec.Items)
+            {
+                var name = JsonNodeHelpers.Get(item, "inventoryItem.product.name", JsonNodeHelpers.Get(item, "product.name"));
+                var productCode = JsonNodeHelpers.Get(item, "inventoryItem.product.productCode", JsonNodeHelpers.Get(item, "product.productCode"));
+                var lot = JsonNodeHelpers.Get(item, "lotNumber", JsonNodeHelpers.Get(item, "inventoryItem.lotNumber", "Default"));
+                <div class="ob-card mb-2">
+                    <div><strong>@name</strong> <span class="badge bg-light text-dark border">@productCode</span></div>
+                    <div class="ob-muted">Lot: @lot</div>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/packing">Back</a>
+        <a class="btn btn-ob-primary" href="/create-lpn">Create LPN</a>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string ShipmentId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private string? _error;
+    private string _scan = string.Empty;
+    private JsonObject? _shipment;
+    private List<PackingSection> _sections = [];
+    private List<PackingSection> _allSections = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _shipment = await ApiClient.GetShipmentAsync(ShipmentId) as JsonObject;
+            var containers = JsonNodeHelpers.ToObjectList(_shipment?["containers"]);
+            _allSections = containers.Select(c => new PackingSection(
+                JsonNodeHelpers.Get(c, "name", string.Empty) is var n && !string.IsNullOrWhiteSpace(n)
+                    ? $"Container Name: {n}"
+                    : "Unpacked Items",
+                JsonNodeHelpers.Get(c, "id", string.Empty),
+                JsonNodeHelpers.ToObjectList(c["shipmentItems"]).ToList()
+            )).Where(s => s.Items.Count > 0).ToList();
+
+            _sections = _allSections;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _shipment = null;
+            _allSections = [];
+            _sections = [];
+        }
+        _loading = false;
+    }
+
+    private void ResetScan()
+    {
+        _scan = string.Empty;
+        _sections = _allSections;
+    }
+
+    private void OnScan()
+    {
+        if (string.IsNullOrWhiteSpace(_scan))
+        {
+            _sections = _allSections;
+            return;
+        }
+
+        var term = _scan.Trim().ToLowerInvariant();
+
+        var flatItems = _allSections.SelectMany(s => s.Items.Select(i => (Section: s, Item: i))).ToList();
+        var matchingItems = flatItems.Where(x =>
+            JsonNodeHelpers.Get(x.Item, "inventoryItem.lotNumber", string.Empty).ToLowerInvariant().Contains(term)
+            || JsonNodeHelpers.Get(x.Item, "lotNumber", string.Empty).ToLowerInvariant().Contains(term)
+            || JsonNodeHelpers.Get(x.Item, "inventoryItem.product.productCode", string.Empty).ToLowerInvariant().Contains(term)
+            || JsonNodeHelpers.Get(x.Item, "inventoryItem.product.name", string.Empty).ToLowerInvariant().Contains(term)).ToList();
+
+        if (matchingItems.Count > 0)
+        {
+            _sections = matchingItems
+                .GroupBy(x => x.Section.Id)
+                .Select(g => new PackingSection(g.First().Section.Title, g.Key, g.Select(x => x.Item).ToList()))
+                .ToList();
+            return;
+        }
+
+        var matchingContainer = JsonNodeHelpers.ToObjectList(_shipment?["containers"]).FirstOrDefault(c =>
+            JsonNodeHelpers.Get(c, "containerNumber", string.Empty).ToLowerInvariant().Contains(term)
+            || JsonNodeHelpers.Get(c, "name", string.Empty).ToLowerInvariant().Contains(term));
+
+        if (matchingContainer is not null)
+        {
+            var id = JsonNodeHelpers.Get(matchingContainer, "id", string.Empty);
+            _sections = _allSections.Where(s => s.Id == id).ToList();
+            return;
+        }
+
+        _error = $"Unable to locate a product, item, or container with identifier: {_scan}";
+    }
+
+    private sealed record PackingSection(string Title, string Id, IReadOnlyList<JsonObject> Items);
+}

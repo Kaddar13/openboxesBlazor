@@ -1,0 +1,119 @@
+@page "/sortation/container/{TaskId}"
+@inject SortationFlowState SortationFlow
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Sortation Container</PageTitle>
+
+@if (_task is null)
+{
+    <div class="ob-empty-state">
+        <h2>Task Not Found</h2>
+        <a class="btn btn-outline-secondary" href="/sortation">Back</a>
+    </div>
+}
+else
+{
+    <h1>Scan Putaway Container ID</h1>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert alert-success">@_message</div>
+    }
+
+    <div class="ob-card">
+        <div class="d-flex gap-2 flex-wrap">
+            <span class="badge bg-light text-dark border">Quantity Sorted: @_quantitySorted</span>
+            <span class="badge bg-light text-dark border">Putaway Zone: @JsonNodeHelpers.Get(_task, "destination.zoneName")</span>
+            <span class="badge bg-light text-dark border">Container: @JsonNodeHelpers.Get(_task, "container.locationNumber")</span>
+            <span class="badge bg-light text-dark border">Final Storage Location: @JsonNodeHelpers.Get(_task, "destination.name")</span>
+        </div>
+
+        <div class="mt-3">
+            <label class="form-label">Container Barcode</label>
+            <input class="form-control" @bind="_containerBarcode" />
+        </div>
+
+        <div class="form-check form-switch mt-3">
+            <input id="overrideContainer" class="form-check-input" type="checkbox" @bind="_overrideContainer" />
+            <label class="form-check-label" for="overrideContainer">Override container</label>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-ob-primary" @onclick="Confirm">Confirm</button>
+            <a class="btn btn-outline-secondary" href="/sortation">Cancel</a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string TaskId { get; set; } = string.Empty;
+
+    [SupplyParameterFromQuery]
+    public int? Quantity { get; set; }
+
+    private JsonObject? _task;
+    private int _quantitySorted;
+    private string _containerBarcode = string.Empty;
+    private bool _overrideContainer;
+    private string? _error;
+    private string? _message;
+
+    protected override void OnInitialized()
+    {
+        _task = SortationFlow.TaskList.FirstOrDefault(t => JsonNodeHelpers.Get(t, "id", string.Empty) == TaskId);
+        _quantitySorted = Quantity ?? 0;
+    }
+
+    private async Task Confirm()
+    {
+        if (_task is null)
+        {
+            return;
+        }
+
+        var scannedContainer = _containerBarcode.Trim();
+        var expectedContainer = JsonNodeHelpers.Get(_task, "container.locationNumber", string.Empty);
+
+        if (string.IsNullOrWhiteSpace(scannedContainer))
+        {
+            _error = "Container barcode is required.";
+            return;
+        }
+
+        if (!_overrideContainer && !string.Equals(scannedContainer, expectedContainer, StringComparison.OrdinalIgnoreCase))
+        {
+            _error = $"Scanned container number {scannedContainer} is different from expected {expectedContainer}.";
+            _containerBarcode = string.Empty;
+            return;
+        }
+
+        var facilityId = JsonNodeHelpers.Get(_task, "facility.id", string.Empty);
+        var taskId = JsonNodeHelpers.Get(_task, "id", string.Empty);
+        var payload = new
+        {
+            action = "load",
+            quantity = _quantitySorted,
+            container = scannedContainer,
+            @override = _overrideContainer
+        };
+
+        try
+        {
+            await ApiClient.PatchPutawayTaskAsync(facilityId, taskId, payload);
+            _message = "Sortation successful.";
+            SortationFlow.Reset();
+            Navigation.NavigateTo("/sortation", true);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _containerBarcode = string.Empty;
+        }
+    }
+}

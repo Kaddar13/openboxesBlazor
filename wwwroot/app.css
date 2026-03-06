@@ -1,0 +1,237 @@
+:root {
+    --ob-primary: #20345c;
+    --ob-warning: #FCFFC1;
+    --ob-danger: #FF5630;
+    --ob-success: #22bb33;
+    --ob-info: #00B8D9;
+    --ob-small: 8px;
+    --ob-medium: 12px;
+    --ob-large: 16px;
+}
+
+html, body {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    background: #f5f7fb;
+}
+
+a, .btn-link {
+    color: var(--ob-primary);
+}
+
+.content {
+    padding-top: 1rem;
+}
+
+.btn-ob-primary,
+.btn-primary {
+    color: #fff;
+    background-color: var(--ob-primary);
+    border-color: var(--ob-primary);
+}
+
+.ob-card {
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    margin-bottom: var(--ob-small);
+    padding: var(--ob-large);
+}
+
+.ob-card > h2 {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0 0 var(--ob-small) 0;
+    color: #111827;
+}
+
+.ob-card h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+}
+
+.ob-muted {
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.ob-caption {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.ob-entry-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    border-top: 1px solid #eef1f5;
+}
+
+.ob-login-screen {
+    max-width: 460px;
+    margin: 4rem auto;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.08);
+    padding: 20px;
+}
+
+.ob-login-logo-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.ob-login-logo {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+}
+
+.ob-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px;
+}
+
+/* React Native-like chip appearance used across migrated screens */
+.badge {
+    height: 24px;
+    line-height: 24px;
+    border-radius: 4px;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.badge.bg-light.text-dark.border {
+    background: #f8fafc !important;
+    border-color: #d6dbe4 !important;
+    color: #111827 !important;
+}
+
+.badge.text-dark[style*="#FCFFC1"] {
+    background: #FCFFC1 !important;
+    color: #111827 !important;
+}
+
+.form-label {
+    font-size: 11px;
+    color: #6b7280;
+    margin-bottom: 4px;
+}
+
+.form-control,
+.form-select {
+    border-radius: 4px;
+    min-height: 40px;
+}
+
+.btn {
+    border-radius: 4px;
+}
+
+.btn-ob-primary {
+    min-height: 38px;
+}
+
+.ob-dash-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #fff;
+    text-decoration: none;
+    color: var(--ob-primary);
+    border-radius: 6px;
+    min-height: 130px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    padding: 12px;
+}
+
+.ob-dash-card:hover {
+    background: #f8fbff;
+}
+
+.ob-dash-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #e6ebf4;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+}
+
+.ob-dash-label {
+    font-weight: 600;
+    text-align: center;
+}
+
+.ob-empty-state {
+    background: #fff;
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+}
+
+.ob-location-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ob-location-card,
+.ob-location-item {
+    border: 1px solid #e8edf5;
+    background: #fff;
+    border-radius: 6px;
+    width: 100%;
+    text-align: left;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ob-location-card.selected,
+.ob-location-item.selected {
+    border-width: 4px;
+    border-color: var(--ob-primary);
+}
+
+.ob-location-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: #e8edf5;
+    color: var(--ob-primary);
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+}
+
+.ob-location-title {
+    font-weight: 700;
+    color: var(--ob-primary);
+}
+
+.ob-location-subtitle {
+    font-size: 0.8rem;
+    color: #78808e;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid #26b050;
+}
+
+.invalid {
+    outline: 1px solid #e50000;
+}
+
+.validation-message {
+    color: #e50000;
+}

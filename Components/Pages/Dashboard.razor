@@ -1,0 +1,88 @@
+@page "/dashboard"
+@inject SessionManager SessionManager
+@inject NavigationManager Navigation
+@inject UiSettingsService UiSettings
+@inject OpenBoxesApiClient ApiClient
+
+<PageTitle>Dashboard</PageTitle>
+
+<h1>Dashboard</h1>
+
+@if (_loading)
+{
+    <p>Loading...</p>
+}
+else if (_entries.Count == 0)
+{
+    <div class="ob-empty-state">
+        <h2>No Dashboard Entries</h2>
+        <p>Please check your settings to enable dashboard entries.</p>
+        <a class="btn btn-ob-primary" href="/settings">Go To Settings</a>
+    </div>
+}
+else
+{
+    <div class="ob-dashboard-grid">
+        @foreach (var entry in _entries)
+        {
+            <a class="ob-dash-card" href="@entry.Route">
+                <div class="ob-dash-icon">@entry.ScreenName[..1]</div>
+                <div class="ob-dash-label">@entry.ScreenName</div>
+            </a>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<DashboardEntryDefinition> _entries = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await UiSettings.EnsureLoadedAsync(ApiClient.BaseUrl);
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        _entries = GetVisibleOrderedEntries();
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private List<DashboardEntryDefinition> GetVisibleOrderedEntries()
+    {
+        var byKey = DashboardCatalog.Entries.ToDictionary(x => x.Key, x => x);
+        var ordered = new List<DashboardEntryDefinition>();
+
+        foreach (var key in UiSettings.Current.DashboardEntriesOrder)
+        {
+            if (byKey.TryGetValue(key, out var entry))
+            {
+                ordered.Add(entry);
+            }
+        }
+
+        foreach (var entry in DashboardCatalog.Entries)
+        {
+            if (!ordered.Any(x => x.Key == entry.Key))
+            {
+                ordered.Add(entry);
+            }
+        }
+
+        return ordered
+            .Where(entry => UiSettings.Current.DashboardEntriesVisibility.TryGetValue(entry.Key, out var visible)
+                ? visible
+                : entry.DefaultVisible)
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Route))
+            .ToList();
+    }
+}

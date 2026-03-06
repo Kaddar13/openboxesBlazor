@@ -1,0 +1,86 @@
+@page "/sortation-putaway/product"
+@inject SortationFlowState SortationFlow
+@inject NavigationManager Navigation
+
+<PageTitle>Putaway Product Scan</PageTitle>
+
+@if (_task is null)
+{
+    <div class="ob-empty-state"><h2>Putaway Details Not Found</h2></div>
+}
+else
+{
+    <h1>Scan Putaway Product Barcode</h1>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+
+    <div class="ob-card">
+        <div class="d-flex gap-2 flex-wrap">
+            <span class="badge bg-light text-dark border">Product Code: @JsonNodeHelpers.Get(_task, "inventoryItem.product.productCode")</span>
+            <span class="badge text-dark" style="background:#FCFFC1">@JsonNodeHelpers.Get(_task, "type")</span>
+        </div>
+        <h2 class="mt-3">@JsonNodeHelpers.Get(_task, "inventoryItem.product.name")</h2>
+    </div>
+
+    <div class="ob-card">
+        <label class="form-label">Putaway Product Entry Field</label>
+        <input class="form-control" @bind="_productBarcode" />
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-ob-primary" @onclick="Confirm">Confirm</button>
+            <button class="btn btn-outline-secondary" @onclick="Skip">Skip</button>
+        </div>
+    </div>
+}
+
+@code {
+    private JsonObject? _task;
+    private string _productBarcode = string.Empty;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        _task = SortationFlow.CurrentTask;
+    }
+
+    private void Confirm()
+    {
+        if (_task is null)
+        {
+            return;
+        }
+
+        var expectedCode = JsonNodeHelpers.Get(_task, "inventoryItem.product.productCode", string.Empty);
+        var expectedName = JsonNodeHelpers.Get(_task, "inventoryItem.product.name", string.Empty).ToLowerInvariant();
+        var scanned = _productBarcode.Trim();
+
+        var valid = string.Equals(scanned, expectedCode, StringComparison.OrdinalIgnoreCase)
+            || expectedName.Contains(scanned.ToLowerInvariant());
+
+        if (!valid)
+        {
+            _error = $"Scanned barcode does not match expected product ({expectedCode}).";
+            _productBarcode = string.Empty;
+            return;
+        }
+
+        Navigation.NavigateTo("/sortation-putaway/quantity");
+    }
+
+    private void Skip()
+    {
+        var next = SortationFlow.CurrentTaskIndex + 1;
+        if (next < SortationFlow.TaskList.Count)
+        {
+            SortationFlow.CurrentTaskIndex = next;
+            Navigation.NavigateTo("/sortation-putaway/location", true);
+        }
+        else
+        {
+            Navigation.NavigateTo(SortationFlow.IsDirectPutaway ? "/sortation" : "/sortation-putaway", true);
+        }
+    }
+}

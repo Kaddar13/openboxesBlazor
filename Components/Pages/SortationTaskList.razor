@@ -1,0 +1,70 @@
+@page "/sortation/tasks"
+@inject SortationFlowState SortationFlow
+@inject NavigationManager Navigation
+
+<PageTitle>Sortation Task Selection</PageTitle>
+
+<h1>Multiple Putaways (@SortationFlow.TaskList.Count)</h1>
+<p>
+    This <strong>@JsonNodeHelpers.Get(SortationFlow.Product ?? new JsonObject(), "productCode") - @JsonNodeHelpers.Get(SortationFlow.Product ?? new JsonObject(), "name")</strong>
+    product is linked to more than one putaway. Choose one task.
+</p>
+
+@if (_selectedTask is null)
+{
+    <div class="alert alert-info">Select a task then click Continue.</div>
+}
+
+@foreach (var task in SortationFlow.TaskList)
+{
+    var id = JsonNodeHelpers.Get(task, "id", string.Empty);
+    var selected = _selectedTask is not null && JsonNodeHelpers.Get(_selectedTask, "id", string.Empty) == id;
+
+    <button class="ob-card mb-2 @(selected ? "border border-3 border-primary" : "")" @onclick="() => _selectedTask = task">
+        <div class="d-flex gap-2 flex-wrap">
+            <span class="badge bg-light text-dark border">@JsonNodeHelpers.Get(task, "identifier")</span>
+            <span class="badge text-dark" style="background:#FCFFC1">@JsonNodeHelpers.Get(task, "type")</span>
+            <span class="badge text-dark" style="background:#FCFFC1">@JsonNodeHelpers.Get(task, "status")</span>
+        </div>
+        <div class="mt-2"><strong>Location Name:</strong> @JsonNodeHelpers.Get(task, "location.name")</div>
+        <div class="ob-muted">Location Number: @JsonNodeHelpers.Get(task, "location.locationNumber")</div>
+        <div class="mt-2 d-flex gap-2 flex-wrap">
+            <span class="badge bg-light text-dark border">Quantity: @JsonNodeHelpers.Get(task, "quantity")</span>
+            <span class="badge bg-light text-dark border">Assignee: @JsonNodeHelpers.Get(task, "assignee.firstName") @JsonNodeHelpers.Get(task, "assignee.lastName")</span>
+            <span class="badge bg-light text-dark border">Final Storage Location: @JsonNodeHelpers.Get(task, "destination.name")</span>
+        </div>
+    </button>
+}
+
+<div class="d-flex gap-2 mt-3">
+    <button class="btn btn-ob-primary" @onclick="Continue" disabled="@(_selectedTask is null)">Continue</button>
+    <a class="btn btn-outline-secondary" href="/sortation">Back</a>
+</div>
+
+@code {
+    private JsonObject? _selectedTask;
+
+    private void Continue()
+    {
+        if (_selectedTask is null)
+        {
+            return;
+        }
+
+        var destinationId = JsonNodeHelpers.Get(_selectedTask, "destination.id", string.Empty);
+        if (string.IsNullOrWhiteSpace(destinationId))
+        {
+            return;
+        }
+
+        var selectedId = JsonNodeHelpers.Get(_selectedTask, "id", string.Empty);
+        var index = SortationFlow.TaskList.FindIndex(t => JsonNodeHelpers.Get(t, "id", string.Empty) == selectedId);
+        if (index < 0)
+        {
+            return;
+        }
+
+        SortationFlow.CurrentTaskIndex = index;
+        Navigation.NavigateTo($"/sortation/quantity/{selectedId}");
+    }
+}

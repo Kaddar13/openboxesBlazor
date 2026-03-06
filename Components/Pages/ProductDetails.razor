@@ -1,0 +1,174 @@
+@page "/products/{ProductId}"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Product Details</PageTitle>
+
+<h1>Product Details</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="alert alert-success">@_message</div>
+}
+
+@if (_loading)
+{
+    <p>Loading...</p>
+}
+else if (_product is null)
+{
+    <div class="ob-empty-state"><p>Product not found.</p></div>
+}
+else
+{
+    <div class="ob-card">
+        <div class="d-flex justify-content-between align-items-center">
+            <span class="badge bg-light text-dark border">Product Code: @JsonNodeHelpers.Get(_product, "productCode")</span>
+            <span class="badge bg-light text-dark border">Items Available: @_filteredItems.Count</span>
+        </div>
+        <h2 class="mt-3">@JsonNodeHelpers.Get(_product, "name")</h2>
+        <div class="mt-2">
+            <span class="badge bg-light text-dark border me-2">Barcode: @JsonNodeHelpers.Get(_product, "upc")</span>
+        </div>
+
+        <div class="row g-2 mt-2">
+            <div class="col-12 col-md-4">
+                <input class="form-control" @bind="_newBarcode" placeholder="Edit barcode" />
+            </div>
+            <div class="col-12 col-md-8 d-grid d-md-flex gap-2">
+                <button class="btn btn-ob-primary" @onclick="SaveBarcode">Edit Barcode</button>
+                <button class="btn btn-outline-secondary" @onclick="Load">Refresh Availability</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="ob-card">
+        <h2>Availability</h2>
+        <div class="row">
+            <div class="col-md-4"><strong>Status:</strong> @JsonNodeHelpers.Get(_product, "status")</div>
+            <div class="col-md-4"><strong>Quantity On Hand:</strong> @JsonNodeHelpers.Get(_product, "quantityOnHand") @JsonNodeHelpers.Get(_product, "unitOfMeasure", "EA")</div>
+            <div class="col-md-4"><strong>Quantity Available:</strong> @JsonNodeHelpers.Get(_product, "quantityAvailable") @JsonNodeHelpers.Get(_product, "unitOfMeasure", "EA")</div>
+        </div>
+    </div>
+
+    <div class="ob-card">
+        <h2>Details</h2>
+        <div class="row">
+            <div class="col-md-6"><strong>Product Code:</strong> @JsonNodeHelpers.Get(_product, "productCode")</div>
+            <div class="col-md-6"><strong>Category:</strong> @JsonNodeHelpers.Get(_product, "category.name")</div>
+            <div class="col-md-6"><strong>Product Type:</strong> @JsonNodeHelpers.Get(_product, "productType.name", "Default")</div>
+            <div class="col-md-6"><strong>Price Per Unit:</strong> @JsonNodeHelpers.Get(_product, "pricePerUnit")</div>
+        </div>
+    </div>
+
+    @if (_filteredItems.Count > 0)
+    {
+        <div class="ob-card">
+            <h2>Available Items</h2>
+            @foreach (var item in _filteredItems)
+            {
+                <div class="ob-card mb-2">
+                    <div><span class="badge bg-light text-dark border">Bin Location: @JsonNodeHelpers.Get(item, "binLocation.name", "Default")</span></div>
+                    <div class="mt-2"><strong>@JsonNodeHelpers.Get(item, "product.name", JsonNodeHelpers.Get(_product, "name"))</strong></div>
+                    <div class="ob-muted">Lot Number: @JsonNodeHelpers.Get(item, "lotNumber", "Default")</div>
+                    <div class="mt-2 d-flex gap-2 flex-wrap">
+                        <span class="badge bg-light text-dark border">Qty On Hand: @JsonNodeHelpers.Get(item, "quantityOnHand")</span>
+                        <span class="badge bg-light text-dark border">Qty Available: @JsonNodeHelpers.Get(item, "quantityAvailable")</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/products">Back</a>
+        <button class="btn btn-ob-primary" @onclick="PrintLabel">Print Barcode Label</button>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string ProductId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private string? _error;
+    private string? _message;
+    private JsonObject? _product;
+    private string _newBarcode = string.Empty;
+    private IReadOnlyList<JsonObject> _filteredItems = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            _product = await ApiClient.GetProductByIdAsync(ProductId) as JsonObject;
+            _newBarcode = JsonNodeHelpers.Get(_product ?? new JsonObject(), "upc", string.Empty);
+
+            _filteredItems = JsonNodeHelpers.ToObjectList(_product?["availableItems"])
+                .Where(item =>
+                {
+                    var qoh = decimal.TryParse(JsonNodeHelpers.Get(item, "quantityOnHand", "0"), out var qohVal) ? qohVal : 0;
+                    var qa = decimal.TryParse(JsonNodeHelpers.Get(item, "quantityAvailable", "0"), out var qaVal) ? qaVal : 0;
+                    return qoh > 0 || qa > 0;
+                })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _product = null;
+            _filteredItems = [];
+        }
+
+        _loading = false;
+    }
+
+    private async Task SaveBarcode()
+    {
+        _error = null;
+        _message = null;
+
+        if (string.IsNullOrWhiteSpace(_newBarcode))
+        {
+            _error = "Barcode cannot be empty.";
+            return;
+        }
+
+        try
+        {
+            await ApiClient.UpdateProductIdentifierAsync(ProductId, "upc", _newBarcode.Trim());
+            _message = "Barcode updated.";
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private void PrintLabel()
+    {
+        _message = "Print label action is available in mobile and will be wired to your print endpoint next.";
+    }
+}

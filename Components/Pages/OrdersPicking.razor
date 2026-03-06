@@ -1,0 +1,132 @@
+@page "/orders-picking"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject AppState AppState
+@inject NavigationManager Navigation
+
+<PageTitle>Orders</PageTitle>
+
+<h1>Orders</h1>
+
+<div class="row g-2 mb-3">
+    <div class="col-12 col-md-6">
+        <input class="form-control" @bind="_identifier" placeholder="Search Orders by Name" />
+    </div>
+    <div class="col-12 col-md-6 d-grid d-md-flex gap-2">
+        <button class="btn btn-ob-primary" @onclick="Load">Search</button>
+        <button class="btn btn-outline-secondary" @onclick="Reset">Reset</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_loading)
+{
+    <p>Loading...</p>
+}
+else if (_items.Count == 0)
+{
+    <div class="ob-empty-state">
+        <h2>Picking</h2>
+        <p>There are no items to pick</p>
+    </div>
+}
+else
+{
+    @foreach (var order in _items)
+    {
+        var orderId = JsonNodeHelpers.Get(order, "id", string.Empty);
+        var picklistId = JsonNodeHelpers.Get(order, "picklist.id", string.Empty);
+        var identifier = JsonNodeHelpers.Get(order, "identifier");
+        var status = JsonNodeHelpers.Get(order, "statusCode", JsonNodeHelpers.Get(order, "status"));
+        var destination = JsonNodeHelpers.Get(order, "destination.name");
+        var expected = JsonNodeHelpers.Get(order, "expectedShippingDate");
+        var packing = JsonNodeHelpers.Get(order, "packingLocation.name");
+        var loading = JsonNodeHelpers.Get(order, "loadingLocation.name");
+
+        <div class="ob-card mb-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <strong>@identifier</strong>
+                <span class="badge text-dark" style="background:#FCFFC1">@status</span>
+            </div>
+            <hr />
+            <div><strong>Destination:</strong> @destination</div>
+            <div class="mt-2"><span class="badge bg-light text-dark border">Expected Shipping: @expected</span></div>
+            <hr />
+            <div class="row">
+                <div class="col-6">
+                    <div class="ob-muted">Packing Location</div>
+                    <div>@packing</div>
+                </div>
+                <div class="col-6">
+                    <div class="ob-muted">Loading Location</div>
+                    <div>@loading</div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <a class="btn btn-ob-primary btn-sm" href="/order-details/@orderId?picklistId=@picklistId">Open Details</a>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private string _identifier = string.Empty;
+    private IReadOnlyList<JsonObject> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task Reset()
+    {
+        _identifier = string.Empty;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var locationId = AppState.CurrentSession?.Location?.Id;
+        if (string.IsNullOrWhiteSpace(locationId))
+        {
+            _error = "No location selected.";
+            _loading = false;
+            _items = [];
+            return;
+        }
+
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            _items = JsonNodeHelpers.ToObjectList(await ApiClient.GetOrdersPickingAsync(locationId,
+                string.IsNullOrWhiteSpace(_identifier) ? null : _identifier.Trim()));
+
+            if (_items.Count == 0)
+            {
+                _error = "No outbound orders found";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _items = [];
+        }
+
+        _loading = false;
+    }
+}

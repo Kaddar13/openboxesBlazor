@@ -1,0 +1,105 @@
+@page "/sortation"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject AppState AppState
+@inject SortationFlowState SortationFlow
+@inject NavigationManager Navigation
+
+<PageTitle>Sortation</PageTitle>
+
+<h1>Scan Product Barcode</h1>
+<p>Point your barcode scanner at the product.</p>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="ob-card">
+    <div class="row g-2">
+        <div class="col-12 col-md-8"><input class="form-control" @bind="_barcode" placeholder="Product Barcode" /></div>
+        <div class="col-12 col-md-4 d-grid"><button class="btn btn-ob-primary" @onclick="HandleScan">Scan</button></div>
+    </div>
+</div>
+
+@code {
+    private string _barcode = string.Empty;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+        }
+    }
+
+    private async Task HandleScan()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_barcode))
+        {
+            _error = "Barcode is required.";
+            return;
+        }
+
+        var locationId = AppState.CurrentSession?.Location?.Id;
+        if (string.IsNullOrWhiteSpace(locationId))
+        {
+            _error = "Current location context was not set properly.";
+            return;
+        }
+
+        try
+        {
+            var productNode = await ApiClient.GetProductByBarcodeAsync(_barcode.Trim());
+            var product = productNode?["data"] as JsonObject;
+            if (product is null)
+            {
+                _error = "Product not found.";
+                _barcode = string.Empty;
+                return;
+            }
+
+            var productId = JsonNodeHelpers.Get(product, "id", string.Empty);
+            var tasksNode = await ApiClient.GetPutawayTasksAsync(locationId, productId);
+            var tasks = JsonNodeHelpers.ToObjectList(tasksNode?["data"] ?? tasksNode)
+                .Where(t =>
+                {
+                    var s = JsonNodeHelpers.Get(t, "status", string.Empty).ToUpperInvariant();
+                    return s is "PENDING" or "STARTED";
+                })
+                .ToList();
+
+            if (tasks.Count == 0)
+            {
+                _error = "No pending tasks found.";
+            }
+            else
+            {
+                SortationFlow.Product = product;
+                SortationFlow.TaskList = tasks;
+                SortationFlow.CurrentTaskIndex = 0;
+                SortationFlow.IsDirectPutaway = false;
+
+                if (tasks.Count == 1)
+                {
+                    var taskId = JsonNodeHelpers.Get(tasks[0], "id", string.Empty);
+                    Navigation.NavigateTo($"/sortation/quantity/{taskId}");
+                }
+                else
+                {
+                    Navigation.NavigateTo("/sortation/tasks");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+
+        _barcode = string.Empty;
+    }
+}

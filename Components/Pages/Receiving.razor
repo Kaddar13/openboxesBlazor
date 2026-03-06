@@ -1,0 +1,158 @@
+@page "/receiving"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject AppState AppState
+@inject NavigationManager Navigation
+
+<PageTitle>Receiving</PageTitle>
+
+<h1>Receiving</h1>
+
+<div class="ob-card">
+    <div class="row g-2">
+        <div class="col-12 col-md-8">
+            <input class="form-control" @bind="_searchTerm" placeholder="Search by order number" />
+        </div>
+        <div class="col-12 col-md-4 d-grid d-md-flex gap-2">
+            <button class="btn btn-ob-primary" @onclick="ApplySearch">Search</button>
+            <button class="btn btn-outline-secondary" @onclick="ResetSearch">Reset</button>
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_loading)
+{
+    <p>Loading inbound orders...</p>
+}
+else if (_visibleOrders.Count == 0)
+{
+    <div class="ob-empty-state">
+        <h2>Receiving</h2>
+        <p>There are no items to receive</p>
+    </div>
+}
+else
+{
+    @foreach (var item in _visibleOrders)
+    {
+        var shipmentId = JsonNodeHelpers.Get(item, "id", string.Empty);
+        var shipmentNumber = JsonNodeHelpers.Get(item, "shipmentNumber");
+        var status = JsonNodeHelpers.Get(item, "status");
+        var name = JsonNodeHelpers.Get(item, "name");
+        var due = JsonNodeHelpers.Get(item, "expectedDeliveryDate");
+        var itemCount = JsonNodeHelpers.ToObjectList(item["shipmentItems"]).Count;
+        var origin = JsonNodeHelpers.Get(item, "origin.name");
+        var destination = JsonNodeHelpers.Get(item, "destination.name");
+
+        <div class="ob-card mb-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <strong>@shipmentNumber</strong>
+                <span class="badge text-dark" style="background:#FCFFC1">@status</span>
+            </div>
+            <hr />
+            <div><strong>@name</strong></div>
+            <div class="mt-2 d-flex gap-2 flex-wrap">
+                <span class="badge bg-light text-dark border">@(itemCount == 1 ? "1 Item" : $"{itemCount} Items")</span>
+                <span class="badge bg-light text-dark border">Due: @due</span>
+            </div>
+            <hr />
+            <div class="row">
+                <div class="col-6"><span class="ob-muted">Origin</span><div>@origin</div></div>
+                <div class="col-6"><span class="ob-muted">Destination</span><div>@destination</div></div>
+            </div>
+            <div class="mt-3">
+                <a class="btn btn-ob-primary btn-sm" href="/receiving/@shipmentId">Open Details</a>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private string _searchTerm = string.Empty;
+    private List<JsonObject> _orders = [];
+    private List<JsonObject> _visibleOrders = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+
+        var locationId = AppState.CurrentSession?.Location?.Id;
+        if (string.IsNullOrWhiteSpace(locationId))
+        {
+            _error = "No location selected.";
+            _orders = [];
+            _visibleOrders = [];
+            _loading = false;
+            return;
+        }
+
+        try
+        {
+            var data = JsonNodeHelpers.ToObjectList(await ApiClient.GetInboundShipmentsAsync(locationId));
+            _orders = data
+                .Where(x =>
+                {
+                    var status = JsonNodeHelpers.Get(x, "status", string.Empty).ToUpperInvariant();
+                    return status is "SHIPPED" or "PARTIALLY_RECEIVED";
+                })
+                .ToList();
+            _visibleOrders = _orders;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _orders = [];
+            _visibleOrders = [];
+        }
+
+        _loading = false;
+    }
+
+    private void ResetSearch()
+    {
+        _searchTerm = string.Empty;
+        _visibleOrders = _orders;
+    }
+
+    private void ApplySearch()
+    {
+        if (string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            _visibleOrders = _orders;
+            return;
+        }
+
+        var term = _searchTerm.Trim().ToLowerInvariant();
+        var exact = _orders.FirstOrDefault(x => JsonNodeHelpers.Get(x, "shipmentNumber", string.Empty).ToLowerInvariant() == term);
+        if (exact is not null)
+        {
+            var id = JsonNodeHelpers.Get(exact, "id", string.Empty);
+            Navigation.NavigateTo($"/receiving/{id}");
+            return;
+        }
+
+        _visibleOrders = _orders
+            .Where(x => JsonNodeHelpers.Get(x, "shipmentNumber", string.Empty).ToLowerInvariant().Contains(term))
+            .ToList();
+    }
+}

@@ -1,0 +1,221 @@
+@page "/sortation-putaway/quantity"
+@inject SortationFlowState SortationFlow
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Putaway Quantity</PageTitle>
+
+@if (_task is null)
+{
+    <div class="ob-empty-state"><h2>Putaway Details Not Found</h2></div>
+}
+else
+{
+    <h1>Enter Putaway Quantity</h1>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert alert-success">@_message</div>
+    }
+
+    <div class="ob-card">
+        <div class="d-flex gap-2 flex-wrap">
+            <span class="badge bg-light text-dark border">Product Code: @JsonNodeHelpers.Get(_task, "inventoryItem.product.productCode")</span>
+            <span class="badge text-dark" style="background:#FCFFC1">@JsonNodeHelpers.Get(_task, "type")</span>
+        </div>
+        <h2 class="mt-3">@JsonNodeHelpers.Get(_task, "inventoryItem.product.name")</h2>
+
+        <div class="mt-2 d-flex gap-2 flex-wrap">
+            <span class="badge bg-light text-dark border">Putaway Container ID: @JsonNodeHelpers.Get(_task, "container.locationNumber")</span>
+            <span class="badge bg-light text-dark border">Putaway Location: @JsonNodeHelpers.Get(_task, "destination.name")</span>
+            <span class="badge bg-light text-dark border">Putaway Quantity: @JsonNodeHelpers.Get(_task, "quantity")</span>
+        </div>
+    </div>
+
+    <div class="ob-card">
+        <div class="row g-2">
+            <div class="col-12 col-md-4">
+                <label class="form-label">Putaway Quantity Entry Field</label>
+                <input type="number" min="0" class="form-control" @bind="_putawayQuantity" />
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Discrepancy Reason</label>
+                <select class="form-select" @bind="_selectedReasonId" disabled="@(!_isCancelRemainingEnabled && _putawayQuantity == _totalQuantity)">
+                    <option value="">Select a reason</option>
+                    @foreach (var reason in _reasonCodes)
+                    {
+                        <option value="@JsonNodeHelpers.Get(reason, "id", string.Empty)">@JsonNodeHelpers.Get(reason, "name")</option>
+                    }
+                </select>
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Cancel Remaining (@_remainingQty)</label>
+                <div class="form-check form-switch">
+                    <input id="cancelRemaining" class="form-check-input" type="checkbox" @bind="_isCancelRemainingEnabled" />
+                    <label class="form-check-label" for="cancelRemaining">Enabled</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-ob-primary" @onclick="HandleConfirm">Confirm</button>
+            <button class="btn btn-outline-secondary" @onclick="Skip">Skip</button>
+        </div>
+    </div>
+}
+
+@code {
+    private JsonObject? _task;
+    private string? _error;
+    private string? _message;
+
+    private int _totalQuantity;
+    private int? _putawayQuantity;
+    private bool _isCancelRemainingEnabled;
+    private List<JsonObject> _reasonCodes = [];
+    private string _selectedReasonId = string.Empty;
+
+    private int _remainingQty => Math.Max(_totalQuantity - (_putawayQuantity ?? 0), 0);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _task = SortationFlow.CurrentTask;
+        _totalQuantity = int.TryParse(JsonNodeHelpers.Get(_task ?? new JsonObject(), "quantity", "0"), out var q) ? q : 0;
+
+        try
+        {
+            var reasons = await ApiClient.GetReasonCodesByActivityAsync("PUTAWAY_DISCREPANCY");
+            _reasonCodes = JsonNodeHelpers.ToObjectList(reasons?["data"] ?? reasons).ToList();
+        }
+        catch
+        {
+            _reasonCodes = [];
+        }
+    }
+
+    private async Task HandleConfirm()
+    {
+        if (_task is null)
+        {
+            return;
+        }
+
+        _error = null;
+
+        if (!_putawayQuantity.HasValue || _putawayQuantity.Value < 0 || _putawayQuantity.Value > _totalQuantity)
+        {
+            _error = $"Please enter a valid putaway quantity between 0 and {_totalQuantity}.";
+            return;
+        }
+
+        var hasDiscrepancy = _putawayQuantity.Value < _totalQuantity || _isCancelRemainingEnabled;
+        if (hasDiscrepancy && string.IsNullOrWhiteSpace(_selectedReasonId))
+        {
+            _error = "Please select a discrepancy reason.";
+            return;
+        }
+
+        var facilityId = JsonNodeHelpers.Get(_task, "facility.id", string.Empty);
+        var taskId = JsonNodeHelpers.Get(_task, "id", string.Empty);
+        var destinationId = JsonNodeHelpers.Get(_task, "destination.id", string.Empty);
+
+        try
+        {
+            if (_putawayQuantity.Value == _totalQuantity)
+            {
+                var payload = new
+                {
+                    action = "complete",
+                    destination = destinationId,
+                    isCancelRemaining = false,
+                    reasonCode = string.IsNullOrWhiteSpace(_selectedReasonId) ? null : _selectedReasonId,
+                    isDirectPutaway = SortationFlow.IsDirectPutaway
+                };
+
+                var response = await ApiClient.PatchPutawayTaskAsync(facilityId, taskId, payload);
+                HandleResponseAfterComplete(response?["data"] as JsonObject);
+                return;
+            }
+
+            var partialPayload = new
+            {
+                action = "partialComplete",
+                quantity = _putawayQuantity.Value,
+                destination = destinationId,
+                reasonCode = string.IsNullOrWhiteSpace(_selectedReasonId) ? null : _selectedReasonId,
+                isDirectPutaway = SortationFlow.IsDirectPutaway
+            };
+
+            var partialResponse = await ApiClient.PatchPutawayTaskAsync(facilityId, taskId, partialPayload);
+            var remainingTask = partialResponse?["data"] as JsonObject;
+            if (remainingTask is null)
+            {
+                _error = "Partial putaway failed.";
+                return;
+            }
+
+            if (_isCancelRemainingEnabled)
+            {
+                var cancelPayload = new
+                {
+                    action = "complete",
+                    destination = JsonNodeHelpers.Get(remainingTask, "destination.id", string.Empty),
+                    isCancelRemaining = true,
+                    reasonCode = string.IsNullOrWhiteSpace(_selectedReasonId) ? null : _selectedReasonId,
+                    isDirectPutaway = SortationFlow.IsDirectPutaway
+                };
+
+                var cancelResponse = await ApiClient.PatchPutawayTaskAsync(
+                    JsonNodeHelpers.Get(remainingTask, "facility.id", string.Empty),
+                    JsonNodeHelpers.Get(remainingTask, "id", string.Empty),
+                    cancelPayload);
+
+                HandleResponseAfterComplete(cancelResponse?["data"] as JsonObject);
+            }
+            else
+            {
+                SortationFlow.TaskList = [remainingTask];
+                SortationFlow.CurrentTaskIndex = 0;
+                Navigation.NavigateTo("/sortation-putaway/quantity", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private void HandleResponseAfterComplete(JsonObject? _)
+    {
+        _message = "Putaway successful.";
+
+        var nextIndex = SortationFlow.CurrentTaskIndex + 1;
+        if (nextIndex < SortationFlow.TaskList.Count)
+        {
+            SortationFlow.CurrentTaskIndex = nextIndex;
+            Navigation.NavigateTo("/sortation-putaway/location", true);
+        }
+        else
+        {
+            Navigation.NavigateTo(SortationFlow.IsDirectPutaway ? "/sortation" : "/sortation-putaway", true);
+        }
+    }
+
+    private void Skip()
+    {
+        var next = SortationFlow.CurrentTaskIndex + 1;
+        if (next < SortationFlow.TaskList.Count)
+        {
+            SortationFlow.CurrentTaskIndex = next;
+            Navigation.NavigateTo("/sortation-putaway/location", true);
+        }
+        else
+        {
+            Navigation.NavigateTo(SortationFlow.IsDirectPutaway ? "/sortation" : "/sortation-putaway", true);
+        }
+    }
+}

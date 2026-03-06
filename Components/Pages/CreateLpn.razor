@@ -1,0 +1,102 @@
+@page "/create-lpn"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Create LPN</PageTitle>
+
+<h1>Create LPN</h1>
+
+@if (!string.IsNullOrWhiteSpace(_message)) { <div class="alert alert-info">@_message</div> }
+@if (!string.IsNullOrWhiteSpace(_error)) { <div class="alert alert-danger">@_error</div> }
+
+<EditForm Model="_form" OnValidSubmit="Create">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="mb-3">
+        <label class="form-label">LPN Name</label>
+        <InputText class="form-control" @bind-Value="_form.Name" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Container Type Id (optional)</label>
+        <InputText class="form-control" @bind-Value="_form.ContainerTypeId" />
+    </div>
+
+    <button class="btn btn-primary" type="submit" disabled="@_loading">@(_loading ? "Creating..." : "Create")</button>
+</EditForm>
+
+<h2 class="mt-4">Existing Containers</h2>
+@if (_loadingContainers) { <p>Loading containers...</p> }
+else
+{
+    <table class="table table-striped">
+        <thead><tr><th>Name</th><th>Status</th><th>Type</th></tr></thead>
+        <tbody>
+        @foreach (var item in _containers)
+        {
+            <tr>
+                <td>@JsonNodeHelpers.Get(item, "name")</td>
+                <td>@JsonNodeHelpers.Get(item, "status")</td>
+                <td>@JsonNodeHelpers.Get(item, "containerType.name")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private FormModel _form = new();
+    private bool _loading;
+    private bool _loadingContainers = true;
+    private string? _message;
+    private string? _error;
+    private IReadOnlyList<JsonObject> _containers = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null) { Navigation.NavigateTo("/login", true); return; }
+        await LoadContainers();
+    }
+
+    private async Task Create()
+    {
+        _loading = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            var payload = new
+            {
+                name = _form.Name,
+                containerType = string.IsNullOrWhiteSpace(_form.ContainerTypeId) ? null : new { id = _form.ContainerTypeId }
+            };
+
+            await ApiClient.CreateLpnAsync(payload);
+            _message = "LPN created successfully.";
+            _form = new FormModel();
+            await LoadContainers();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+
+        _loading = false;
+    }
+
+    private async Task LoadContainers()
+    {
+        _loadingContainers = true;
+        try { _containers = JsonNodeHelpers.ToObjectList(await ApiClient.GetContainersAsync()); }
+        catch (Exception ex) { _error = ex.Message; }
+        _loadingContainers = false;
+    }
+
+    private sealed class FormModel
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        public string Name { get; set; } = string.Empty;
+        public string? ContainerTypeId { get; set; }
+    }
+}

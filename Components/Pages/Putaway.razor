@@ -1,0 +1,68 @@
+@page "/putaway"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Putaway</PageTitle>
+
+<h1>Putaway</h1>
+
+<div class="row g-2 mb-3">
+    <div class="col-12 col-md-8"><input class="form-control" @bind="_query" placeholder="Search order/container" /></div>
+    <div class="col-12 col-md-4 d-grid d-md-flex gap-2">
+        <button class="btn btn-primary" @onclick="Load">Search</button>
+        <button class="btn btn-outline-secondary" @onclick="Reset">Reset</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error)) { <div class="alert alert-danger">@_error</div> }
+@if (_loading) { <p>Loading putaways...</p> }
+else
+{
+    <table class="table table-striped">
+        <thead><tr><th>ID</th><th>Status</th><th>Container</th><th>Product</th></tr></thead>
+        <tbody>
+        @foreach (var item in _items)
+        {
+            <tr>
+                <td>@JsonNodeHelpers.Get(item, "id")</td>
+                <td>@JsonNodeHelpers.Get(item, "status")</td>
+                <td>@JsonNodeHelpers.Get(item, "container.name")</td>
+                <td>@JsonNodeHelpers.Get(item, "product.name")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private string _query = string.Empty;
+    private bool _loading;
+    private string? _error;
+    private IReadOnlyList<JsonObject> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null) { Navigation.NavigateTo("/login", true); return; }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _items = JsonNodeHelpers.ToObjectList(await ApiClient.GetPutawaysAsync(_query));
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        _loading = false;
+    }
+
+    private async Task Reset()
+    {
+        _query = string.Empty;
+        await Load();
+    }
+}

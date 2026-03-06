@@ -1,0 +1,229 @@
+@page "/order-details/{OrderId}"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Order Details</PageTitle>
+
+<h1>Order Details</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="alert alert-success">@_message</div>
+}
+
+@if (_loading)
+{
+    <p>Loading...</p>
+}
+else if (_order is null)
+{
+    <div class="ob-empty-state"><p>Order not found.</p></div>
+}
+else
+{
+    <div class="ob-card">
+        <div class="d-flex justify-content-between align-items-center">
+            <strong>@JsonNodeHelpers.Get(_order, "identifier")</strong>
+            <span class="badge text-dark" style="background:#FCFFC1">
+                @JsonNodeHelpers.Get(_order, "statusCode") (Picked @JsonNodeHelpers.Get(_pickList ?? new JsonObject(), "statusMessage", "0"))
+            </span>
+        </div>
+        <hr />
+        <div><strong>Destination:</strong> @JsonNodeHelpers.Get(_order, "destination.locationNumber") - @JsonNodeHelpers.Get(_order, "destination.name")</div>
+        <div class="mt-2"><span class="badge bg-light text-dark border">Expected Shipping: @JsonNodeHelpers.Get(_order, "expectedShippingDate")</span></div>
+    </div>
+
+    @if (_picklistItems.Count == 0)
+    {
+        <div class="ob-empty-state">
+            <h2>No Picklist found</h2>
+            <a class="btn btn-outline-secondary" href="/orders-picking">Back to Orders</a>
+        </div>
+    }
+    else
+    {
+        @foreach (var item in _picklistItems)
+        {
+            var itemId = JsonNodeHelpers.Get(item, "id", string.Empty);
+            var productName = JsonNodeHelpers.Get(item, "product.name");
+            var productCode = JsonNodeHelpers.Get(item, "productCode", JsonNodeHelpers.Get(item, "product.productCode"));
+            var qtyRemaining = JsonNodeHelpers.Get(item, "quantityRemaining", "0");
+            var lotNumber = JsonNodeHelpers.Get(item, "lotNumber");
+            var binLocation = JsonNodeHelpers.Get(item, "binLocation.name");
+            var key = itemId;
+
+            if (!_pickForms.TryGetValue(key, out var form))
+            {
+                form = new PickItemForm { QuantityToPick = qtyRemaining };
+                _pickForms[key] = form;
+            }
+
+            <div class="ob-card mb-2">
+                <div class="d-flex justify-content-between">
+                    <strong>@productName</strong>
+                    <span class="badge bg-light text-dark border">@productCode</span>
+                </div>
+                <div class="ob-muted mt-1">Lot: @lotNumber | Bin: @binLocation</div>
+                <div class="ob-muted">Quantity Remaining: @qtyRemaining</div>
+
+                <div class="row g-2 mt-2">
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Quantity to Pick</label>
+                        <input class="form-control" type="number" min="0" @bind="form.QuantityToPick" />
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Shortage</label>
+                        <select class="form-select" @bind="form.Shortage">
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Shortage Reason</label>
+                        <input class="form-control" @bind="form.ShortageReasonCode" placeholder="Reason code" />
+                    </div>
+                    <div class="col-12 col-md-3 d-grid align-self-end">
+                        <button class="btn btn-ob-primary" @onclick="() => SubmitPick(item)">Pick Item</button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/orders-picking">Back</a>
+        <a class="btn btn-ob-primary" href="/packing">Move to Packing</a>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string OrderId { get; set; } = string.Empty;
+
+    [SupplyParameterFromQuery]
+    public string? PicklistId { get; set; }
+
+    private bool _loading = true;
+    private string? _error;
+    private string? _message;
+    private JsonObject? _order;
+    private JsonObject? _pickList;
+    private IReadOnlyList<JsonObject> _picklistItems = [];
+    private readonly Dictionary<string, PickItemForm> _pickForms = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            _order = await ApiClient.GetStockMovementByIdAsync(OrderId) as JsonObject;
+
+            var picklistId = PicklistId;
+            if (string.IsNullOrWhiteSpace(picklistId))
+            {
+                picklistId = JsonNodeHelpers.Get(_order ?? new JsonObject(), "picklist.id", string.Empty);
+            }
+
+            if (!string.IsNullOrWhiteSpace(picklistId))
+            {
+                _pickList = await ApiClient.GetPickListAsync(picklistId) as JsonObject;
+                _picklistItems = JsonNodeHelpers.ToObjectList(_pickList?["picklistItems"]);
+            }
+            else
+            {
+                _pickList = null;
+                _picklistItems = [];
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _order = null;
+            _pickList = null;
+            _picklistItems = [];
+        }
+
+        _loading = false;
+    }
+
+    private async Task SubmitPick(JsonObject item)
+    {
+        _error = null;
+        _message = null;
+
+        var itemId = JsonNodeHelpers.Get(item, "id", string.Empty);
+        if (string.IsNullOrWhiteSpace(itemId) || !_pickForms.TryGetValue(itemId, out var form))
+        {
+            _error = "Invalid picklist item.";
+            return;
+        }
+
+        var quantityRemaining = int.TryParse(JsonNodeHelpers.Get(item, "quantityRemaining", "0"), out var qr) ? qr : 0;
+        var quantityToPick = int.TryParse(form.QuantityToPick, out var qtp) ? qtp : 0;
+
+        if (quantityToPick <= 0 && !form.Shortage)
+        {
+            _error = "Please pick some quantity.";
+            return;
+        }
+
+        if (quantityToPick > quantityRemaining)
+        {
+            _error = "Quantity to pick cannot exceed quantity remaining.";
+            return;
+        }
+
+        if (form.Shortage && string.IsNullOrWhiteSpace(form.ShortageReasonCode))
+        {
+            _error = "You have to provide Reason Code for item shortage.";
+            return;
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["product.id"] = JsonNodeHelpers.Get(item, "product.id", JsonNodeHelpers.Get(item, "productId", string.Empty)),
+            ["productCode"] = JsonNodeHelpers.Get(item, "productCode", string.Empty),
+            ["quantityPicked"] = quantityToPick,
+            ["shortage"] = form.Shortage,
+            ["shortageReasonCode"] = string.IsNullOrWhiteSpace(form.ShortageReasonCode) ? null : form.ShortageReasonCode
+        };
+
+        try
+        {
+            await ApiClient.SubmitPickListItemAsync(itemId, payload);
+            _message = "Picked item successfully";
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private sealed class PickItemForm
+    {
+        public string QuantityToPick { get; set; } = "0";
+        public bool Shortage { get; set; }
+        public string? ShortageReasonCode { get; set; }
+    }
+}

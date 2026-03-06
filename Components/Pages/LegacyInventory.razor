@@ -1,0 +1,48 @@
+@page "/legacy-inventory"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject AppState AppState
+@inject NavigationManager Navigation
+
+<PageTitle>Legacy Inventory</PageTitle>
+
+<h1>Legacy Inventory</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error)) { <div class="alert alert-danger">@_error</div> }
+@if (_loading) { <p>Loading product summary...</p> }
+else
+{
+    <table class="table table-striped">
+        <thead><tr><th>Product</th><th>Code</th><th>On Hand</th><th>Available</th></tr></thead>
+        <tbody>
+        @foreach (var item in _items)
+        {
+            <tr>
+                <td>@JsonNodeHelpers.Get(item, "product.name")</td>
+                <td>@JsonNodeHelpers.Get(item, "product.productCode")</td>
+                <td>@JsonNodeHelpers.Get(item, "quantityOnHand")</td>
+                <td>@JsonNodeHelpers.Get(item, "quantityAvailableToPromise")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private IReadOnlyList<JsonObject> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null) { Navigation.NavigateTo("/login", true); return; }
+
+        var locationId = AppState.CurrentSession?.Location?.Id;
+        if (string.IsNullOrWhiteSpace(locationId)) { _error = "No location selected."; _loading = false; return; }
+
+        try { _items = JsonNodeHelpers.ToObjectList(await ApiClient.GetLocationProductSummaryAsync(locationId)); }
+        catch (Exception ex) { _error = ex.Message; }
+        _loading = false;
+    }
+}

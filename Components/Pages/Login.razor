@@ -1,0 +1,91 @@
+@page "/login"
+@inject SessionManager SessionManager
+@inject AppState AppState
+@inject NavigationManager Navigation
+@inject UiSettingsService UiSettings
+@inject OpenBoxesApiClient ApiClient
+
+<PageTitle>Login</PageTitle>
+
+<div class="ob-login-screen">
+    <div class="ob-login-logo-wrap">
+        <img src="/images/logo.png" alt="OpenBoxes logo" class="ob-login-logo" />
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger" role="alert">@_error</div>
+    }
+
+    <EditForm Model="_form" OnValidSubmit="OnSubmit" class="ob-login-form">
+        <DataAnnotationsValidator />
+
+        <div class="mb-3">
+            <label for="username" class="form-label">Username</label>
+            <InputText id="username" class="form-control" @bind-Value="_form.Username" />
+        </div>
+
+        <div class="mb-3">
+            <label for="password" class="form-label">Password</label>
+            <InputText id="password" class="form-control" type="password" @bind-Value="_form.Password" />
+        </div>
+
+        <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-ob-primary" disabled="@_loading">
+                @(_loading ? "Logging in..." : "Login")
+            </button>
+            <a class="btn btn-link" href="/settings">Settings</a>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    private LoginForm _form = new();
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await UiSettings.EnsureLoadedAsync(ApiClient.BaseUrl);
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is not null)
+        {
+            Navigation.NavigateTo("/dashboard", true);
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task OnSubmit()
+    {
+        _loading = true;
+        _error = null;
+
+        var success = await SessionManager.LoginAsync(_form.Username, _form.Password);
+        if (success)
+        {
+            Navigation.NavigateTo("/dashboard", true);
+        }
+        else
+        {
+            _error = AppState.LastError ?? "Unable to authenticate user with the credentials provided.";
+        }
+
+        _loading = false;
+    }
+
+    private sealed class LoginForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Username not provided")]
+        public string Username { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Password not provided")]
+        [System.ComponentModel.DataAnnotations.MinLength(6, ErrorMessage = "Password is less than 6 characters")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

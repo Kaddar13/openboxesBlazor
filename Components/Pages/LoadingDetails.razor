@@ -1,0 +1,162 @@
+@page "/loading/{ShipmentId}"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Loading Details</PageTitle>
+
+<h1>Loading Details</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+@if (_loading)
+{
+    <p>Loading...</p>
+}
+else if (_shipment is null)
+{
+    <div class="ob-empty-state"><p>Shipment not found.</p></div>
+}
+else
+{
+    <div class="ob-card">
+        <div class="d-flex justify-content-between align-items-center">
+            <strong>@JsonNodeHelpers.Get(_shipment, "shipmentNumber")</strong>
+            <span class="badge text-dark" style="background:#FCFFC1">@JsonNodeHelpers.Get(_shipment, "status")</span>
+        </div>
+        <hr />
+        <div><strong>Destination:</strong> @JsonNodeHelpers.Get(_shipment, "destination.name")</div>
+        <div class="row mt-3">
+            <div class="col-6"><span class="ob-muted">Loading Location</span><div>@JsonNodeHelpers.Get(_shipment, "loadingLocation", "-")</div></div>
+            <div class="col-6"><span class="ob-muted">Loading Location Number</span><div>@JsonNodeHelpers.Get(_shipment, "loadingLocationNumber", "-")</div></div>
+        </div>
+    </div>
+
+    <div class="ob-card">
+        <div class="row g-2">
+            <div class="col-12 col-md-8"><input class="form-control" @bind="_scannedContainer" placeholder="Scan LPN" /></div>
+            <div class="col-12 col-md-4 d-grid d-md-flex gap-2">
+                <button class="btn btn-ob-primary" @onclick="OnContainerScan">Validate</button>
+                <button class="btn btn-outline-secondary" @onclick="() => _scannedContainer = string.Empty">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    @if (_containers.Count == 0)
+    {
+        <div class="ob-empty-state"><p>There are no containers available.</p></div>
+    }
+    else
+    {
+        @foreach (var container in _containers)
+        {
+            var containerId = JsonNodeHelpers.Get(container, "id", string.Empty);
+            var number = JsonNodeHelpers.Get(container, "containerNumber", "-");
+            var status = JsonNodeHelpers.Get(container, "status", "-");
+            var name = JsonNodeHelpers.Get(container, "name", "-");
+            var type = JsonNodeHelpers.Get(container, "type", "-");
+            var shippedItems = JsonNodeHelpers.ToObjectList(container["shipmentItems"]).Count;
+
+            <div class="ob-card mb-2">
+                <div class="d-flex justify-content-between">
+                    <span class="badge bg-light text-dark border">@number</span>
+                    <span class="badge bg-light text-dark border">@status</span>
+                </div>
+                <hr />
+                <strong>Container Name: @name</strong>
+                <div class="mt-2 d-flex gap-2 flex-wrap">
+                    <span class="badge bg-light text-dark border">Type: @type</span>
+                    <span class="badge bg-light text-dark border">Items Shipped: @shippedItems</span>
+                </div>
+                <div class="mt-3">
+                    <a class="btn btn-ob-primary btn-sm" href="/loading/@ShipmentId/container/@containerId">Load Container</a>
+                </div>
+            </div>
+        }
+    }
+
+    <a class="btn btn-outline-secondary" href="/loading">Back</a>
+}
+
+@code {
+    [Parameter]
+    public string ShipmentId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private string? _error;
+    private string? _message;
+    private string _scannedContainer = string.Empty;
+    private JsonObject? _shipment;
+    private List<JsonObject> _containers = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            _shipment = await ApiClient.GetShipmentAsync(ShipmentId) as JsonObject;
+            _containers = JsonNodeHelpers.ToObjectList(_shipment?["containers"])
+                .Where(c => !string.IsNullOrWhiteSpace(JsonNodeHelpers.Get(c, "id", string.Empty)))
+                .OrderBy(c => JsonNodeHelpers.Get(c, "name", string.Empty))
+                .ToList();
+
+            var loaded = _containers.Count(c => JsonNodeHelpers.Get(c, "status", string.Empty).Equals("LOADED", StringComparison.OrdinalIgnoreCase));
+            if (_containers.Count > 0 && loaded == _containers.Count)
+            {
+                _message = "All containers are loaded.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _shipment = null;
+            _containers = [];
+        }
+
+        _loading = false;
+    }
+
+    private void OnContainerScan()
+    {
+        if (string.IsNullOrWhiteSpace(_scannedContainer))
+        {
+            return;
+        }
+
+        var term = _scannedContainer.Trim().ToLowerInvariant();
+        var matching = _containers.FirstOrDefault(c =>
+            JsonNodeHelpers.Get(c, "name", string.Empty).ToLowerInvariant() == term
+            || JsonNodeHelpers.Get(c, "containerNumber", string.Empty).ToLowerInvariant() == term);
+
+        if (matching is null)
+        {
+            _error = $"The LPN: {_scannedContainer} is not for this order";
+            return;
+        }
+
+        var cid = JsonNodeHelpers.Get(matching, "id", string.Empty);
+        Navigation.NavigateTo($"/loading/{ShipmentId}/container/{cid}");
+    }
+}

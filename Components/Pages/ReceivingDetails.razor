@@ -1,0 +1,134 @@
+@page "/receiving/{ShipmentId}"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Inbound Details</PageTitle>
+
+<h1>Inbound Details</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+@if (_loading)
+{
+    <p>Loading...</p>
+}
+else if (_shipment is null)
+{
+    <div class="ob-empty-state"><p>No inbound details found.</p></div>
+}
+else
+{
+    <div class="ob-card">
+        <div class="d-flex justify-content-between">
+            <strong>@JsonNodeHelpers.Get(_shipment, "shipment.shipmentNumber", JsonNodeHelpers.Get(_shipment, "shipmentNumber"))</strong>
+            <span class="badge text-dark" style="background:#FCFFC1">@JsonNodeHelpers.Get(_shipment, "shipmentStatus", JsonNodeHelpers.Get(_shipment, "status"))</span>
+        </div>
+        <div class="mt-2 ob-muted">@JsonNodeHelpers.Get(_shipment, "description", JsonNodeHelpers.Get(_shipment, "name"))</div>
+    </div>
+
+    @foreach (var sec in _sections)
+    {
+        <div class="ob-card mb-2">
+            <h2>@sec.Title</h2>
+
+            @foreach (var item in sec.Items)
+            {
+                var itemId = JsonNodeHelpers.Get(item, "shipmentItemId", JsonNodeHelpers.Get(item, "id", string.Empty));
+                var productName = JsonNodeHelpers.Get(item, "product.name", JsonNodeHelpers.Get(item, "inventoryItem.product.name"));
+                var productCode = JsonNodeHelpers.Get(item, "product.productCode", JsonNodeHelpers.Get(item, "productCode"));
+                var lotNumber = JsonNodeHelpers.Get(item, "lotNumber", JsonNodeHelpers.Get(item, "inventoryItem.lotNumber", "Default"));
+                var qtyShipped = JsonNodeHelpers.Get(item, "quantityShipped", "0");
+                var qtyRemaining = JsonNodeHelpers.Get(item, "quantityRemaining", "0");
+                var qtyReceived = JsonNodeHelpers.Get(item, "quantityReceived", "0");
+
+                <div class="ob-card mb-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong>@productName</strong>
+                        <span class="badge bg-light text-dark border">@productCode</span>
+                    </div>
+                    <div class="ob-muted mt-1">Lot / Serial: @lotNumber</div>
+                    <div class="mt-2 d-flex gap-2 flex-wrap">
+                        <span class="badge bg-light text-dark border">Shipped: @qtyShipped</span>
+                        <span class="badge bg-light text-dark border">Remaining: @qtyRemaining</span>
+                        <span class="badge bg-light text-dark border">Received: @qtyReceived</span>
+                    </div>
+                    <div class="mt-3">
+                        <a class="btn btn-ob-primary btn-sm" href="/receiving/@ShipmentId/item/@itemId">Receive Item</a>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <a class="btn btn-outline-secondary" href="/receiving">Back</a>
+}
+
+@code {
+    [Parameter]
+    public string ShipmentId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private string? _error;
+    private string? _message;
+    private JsonObject? _shipment;
+    private List<ReceivingSection> _sections = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            _shipment = await ApiClient.GetPartialReceivingAsync(ShipmentId) as JsonObject;
+
+            var containers = JsonNodeHelpers.ToObjectList(_shipment?["containers"]);
+            _sections = containers.Select(c =>
+            {
+                var title = JsonNodeHelpers.Get(c, "container.name", "Container");
+                var items = JsonNodeHelpers.ToObjectList(c["shipmentItems"]).ToList();
+                return new ReceivingSection(title, items);
+            }).ToList();
+
+            var totalRemaining = _sections
+                .SelectMany(s => s.Items)
+                .Sum(i => int.TryParse(JsonNodeHelpers.Get(i, "quantityRemaining", "0"), out var v) ? Math.Max(v, 0) : 0);
+
+            if (totalRemaining <= 0)
+            {
+                _message = "All items are received.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _shipment = null;
+            _sections = [];
+        }
+
+        _loading = false;
+    }
+
+    private sealed record ReceivingSection(string Title, IReadOnlyList<JsonObject> Items);
+}

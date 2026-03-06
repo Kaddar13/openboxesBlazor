@@ -1,0 +1,172 @@
+@page "/settings"
+@inject UiSettingsService UiSettings
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Settings</PageTitle>
+
+<h1>Settings</h1>
+
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="alert alert-success" role="alert">@_message</div>
+}
+
+<div class="ob-card">
+    <h2>Server Connection</h2>
+    <p class="ob-muted">Set the server URL that will serve as the backend for the mobile application.</p>
+    <div class="mb-3">
+        <label class="form-label">Server URL</label>
+        <input class="form-control" @bind="_serverUrl" placeholder="https://votre-serveur/openboxes/api" />
+    </div>
+    <button class="btn btn-ob-primary" @onclick="SaveServerUrl">Save and Apply</button>
+</div>
+
+<div class="ob-card">
+    <h2>Customization</h2>
+    <div class="form-check form-switch">
+        <input id="groupLocations" class="form-check-input" type="checkbox" @bind="_groupLocationEntries" />
+        <label class="form-check-label" for="groupLocations">Group Location Entries</label>
+    </div>
+    <p class="ob-muted">Displays locations from the same organization in a collapsible list.</p>
+</div>
+
+<div class="ob-card">
+    <h2>Scanner Settings</h2>
+    <div class="mb-3">
+        <label class="form-label">Scanning Debounce [ms]</label>
+        <input class="form-control" type="number" min="0" @bind="_barcodeDebounceTime" />
+    </div>
+    <p class="ob-muted">Time in milliseconds to wait after scanning before auto-submitting.</p>
+</div>
+
+<div class="ob-card">
+    <div class="d-flex justify-content-between align-items-center">
+        <h2>Menu Entries</h2>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="ResetDashboard">Reset</button>
+    </div>
+    <p class="ob-muted">Toggle and reorder dashboard entries.</p>
+
+    @foreach (var entry in _dashboardEntries)
+    {
+        <div class="ob-entry-row">
+            <div>
+                <strong>@entry.ScreenName</strong>
+                <div class="ob-muted">@entry.Description</div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => MoveUp(entry.Key)">Up</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => MoveDown(entry.Key)">Down</button>
+                <input class="form-check-input" type="checkbox" checked="@IsVisible(entry.Key, entry.DefaultVisible)"
+                       @onchange="(e => ToggleVisibility(entry.Key, e.Value))" />
+            </div>
+        </div>
+    }
+</div>
+
+<div class="d-flex gap-2">
+    <button class="btn btn-ob-primary" @onclick="SaveAll">Save Settings</button>
+    <a class="btn btn-outline-secondary" href="/dashboard">Back</a>
+</div>
+
+@code {
+    private string _serverUrl = string.Empty;
+    private bool _groupLocationEntries;
+    private int _barcodeDebounceTime = 100;
+    private string? _message;
+    private List<DashboardEntryDefinition> _dashboardEntries = [];
+    private Dictionary<string, bool> _visibility = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await UiSettings.EnsureLoadedAsync(ApiClient.BaseUrl);
+        _serverUrl = UiSettings.Current.ServerUrl;
+        _groupLocationEntries = UiSettings.Current.GroupLocationEntries;
+        _barcodeDebounceTime = UiSettings.Current.BarcodeScanDebounceTime <= 0 ? 100 : UiSettings.Current.BarcodeScanDebounceTime;
+
+        _dashboardEntries = GetOrderedEntries();
+        _visibility = new Dictionary<string, bool>(UiSettings.Current.DashboardEntriesVisibility);
+
+        StateHasChanged();
+    }
+
+    private List<DashboardEntryDefinition> GetOrderedEntries()
+    {
+        var byKey = DashboardCatalog.Entries.ToDictionary(x => x.Key, x => x);
+        var ordered = new List<DashboardEntryDefinition>();
+
+        foreach (var key in UiSettings.Current.DashboardEntriesOrder)
+        {
+            if (byKey.TryGetValue(key, out var entry))
+            {
+                ordered.Add(entry);
+            }
+        }
+
+        foreach (var entry in DashboardCatalog.Entries)
+        {
+            if (!ordered.Any(x => x.Key == entry.Key))
+            {
+                ordered.Add(entry);
+            }
+        }
+
+        return ordered;
+    }
+
+    private bool IsVisible(string key, bool defaultVisible)
+        => _visibility.TryGetValue(key, out var v) ? v : defaultVisible;
+
+    private void ToggleVisibility(string key, object? value)
+    {
+        var isChecked = value is bool b && b;
+        _visibility[key] = isChecked;
+    }
+
+    private void MoveUp(string key)
+    {
+        var i = _dashboardEntries.FindIndex(x => x.Key == key);
+        if (i <= 0) return;
+        (_dashboardEntries[i - 1], _dashboardEntries[i]) = (_dashboardEntries[i], _dashboardEntries[i - 1]);
+    }
+
+    private void MoveDown(string key)
+    {
+        var i = _dashboardEntries.FindIndex(x => x.Key == key);
+        if (i < 0 || i >= _dashboardEntries.Count - 1) return;
+        (_dashboardEntries[i + 1], _dashboardEntries[i]) = (_dashboardEntries[i], _dashboardEntries[i + 1]);
+    }
+
+    private void ResetDashboard()
+    {
+        UiSettings.ResetDashboard();
+        _dashboardEntries = DashboardCatalog.Entries.ToList();
+        _visibility = new Dictionary<string, bool>();
+    }
+
+    private async Task SaveServerUrl()
+    {
+        UiSettings.Current.ServerUrl = _serverUrl.Trim();
+        ApiClient.SetBaseUrl(UiSettings.Current.ServerUrl);
+        await UiSettings.SaveAsync();
+        _message = "Server URL saved.";
+    }
+
+    private async Task SaveAll()
+    {
+        UiSettings.Current.ServerUrl = _serverUrl.Trim();
+        UiSettings.Current.GroupLocationEntries = _groupLocationEntries;
+        UiSettings.Current.BarcodeScanDebounceTime = Math.Max(0, _barcodeDebounceTime);
+        UiSettings.Current.DashboardEntriesVisibility = new Dictionary<string, bool>(_visibility);
+        UiSettings.Current.DashboardEntriesOrder = _dashboardEntries.Select(x => x.Key).ToList();
+
+        ApiClient.SetBaseUrl(UiSettings.Current.ServerUrl);
+        await UiSettings.SaveAsync();
+        _message = "Settings saved and applied.";
+    }
+}

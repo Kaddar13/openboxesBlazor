@@ -1,0 +1,116 @@
+@page "/picking"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject AppState AppState
+@inject NavigationManager Navigation
+
+<PageTitle>Picking</PageTitle>
+
+<h1>Picking</h1>
+
+<div class="row g-2 mb-3">
+    <div class="col-12 col-md-4">
+        <label class="form-label">Delivery Type</label>
+        <select class="form-select" @bind="_deliveryType">
+            <option value="PICK_UP">PICK_UP</option>
+            <option value="LOCAL_DELIVERY">LOCAL_DELIVERY</option>
+            <option value="SERVICE">SERVICE</option>
+            <option value="WILL_CALL">WILL_CALL</option>
+            <option value="SHIP_TO">SHIP_TO</option>
+            <option value="DEFAULT">DEFAULT</option>
+        </select>
+    </div>
+    <div class="col-12 col-md-3">
+        <label class="form-label">Orders Count</label>
+        <input type="number" min="1" class="form-control" @bind="_ordersCount" />
+    </div>
+    <div class="col-12 col-md-2 align-self-end d-grid">
+        <button class="btn btn-primary" @onclick="LoadTasks">Load</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+@if (_loading)
+{
+    <p>Loading pick tasks...</p>
+}
+else if (_tasks.Count == 0)
+{
+    <p>No pick tasks found.</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Identifier</th>
+                <th>Status</th>
+                <th>Requisition</th>
+                <th>Required</th>
+                <th>Picked</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var task in _tasks)
+            {
+                <tr>
+                    <td>@task.Identifier</td>
+                    <td>@task.Status</td>
+                    <td>@task.RequisitionNumber</td>
+                    <td>@task.QuantityRequired</td>
+                    <td>@task.QuantityPicked</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading;
+    private string? _error;
+    private string _deliveryType = "DEFAULT";
+    private int _ordersCount = 10;
+    private IReadOnlyList<PickTask> _tasks = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await LoadTasks();
+    }
+
+    private async Task LoadTasks()
+    {
+        var facilityId = AppState.CurrentSession?.Location?.Id;
+        if (string.IsNullOrWhiteSpace(facilityId))
+        {
+            _error = "No current facility selected. Choose a location first.";
+            _tasks = [];
+            return;
+        }
+
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            _tasks = await ApiClient.GetPickTasksAsync(facilityId, _deliveryType, _ordersCount);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _tasks = [];
+        }
+
+        _loading = false;
+    }
+}

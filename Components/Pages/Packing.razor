@@ -1,0 +1,181 @@
+@page "/packing"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject AppState AppState
+@inject NavigationManager Navigation
+
+<PageTitle>Packing</PageTitle>
+
+<h1>Packing</h1>
+
+<div class="ob-card">
+    <div class="row g-2">
+        <div class="col-12 col-md-8"><input class="form-control" @bind="_searchTerm" placeholder="Search or scan barcode" /></div>
+        <div class="col-12 col-md-4 d-grid d-md-flex gap-2">
+            <button class="btn btn-ob-primary" @onclick="ApplySearch">Search</button>
+            <button class="btn btn-outline-secondary" @onclick="ResetSearch">Reset</button>
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_loading)
+{
+    <p>Loading shipments...</p>
+}
+else if (_visible.Count == 0)
+{
+    <div class="ob-empty-state">
+        <h2>Packing</h2>
+        <p>There are no items to pack</p>
+    </div>
+}
+else
+{
+    @foreach (var shipment in _visible)
+    {
+        var id = JsonNodeHelpers.Get(shipment, "id", string.Empty);
+        var shipmentNumber = JsonNodeHelpers.Get(shipment, "shipmentNumber");
+        var status = JsonNodeHelpers.Get(shipment, "status");
+        var destination = JsonNodeHelpers.Get(shipment, "destination.name");
+        var expected = JsonNodeHelpers.Get(shipment, "expectedShippingDate");
+        var packingLocation = JsonNodeHelpers.Get(shipment, "packingLocation", "-");
+        var loadingLocation = JsonNodeHelpers.Get(shipment, "loadingLocation", "-");
+
+        <div class="ob-card mb-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <strong>@shipmentNumber</strong>
+                <span class="badge text-dark" style="background:#FCFFC1">@status</span>
+            </div>
+            <hr />
+            <div><strong>Destination:</strong> @destination</div>
+            <div class="mt-2"><span class="badge bg-light text-dark border">Expected Shipping: @expected</span></div>
+            <hr />
+            <div class="row">
+                <div class="col-6"><span class="ob-muted">Packing Location</span><div>@packingLocation</div></div>
+                <div class="col-6"><span class="ob-muted">Loading Location</span><div>@loadingLocation</div></div>
+            </div>
+            <div class="mt-3"><a class="btn btn-ob-primary btn-sm" href="/packing/@id">Open Details</a></div>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private string _searchTerm = string.Empty;
+    private List<JsonObject> _shipments = [];
+    private List<JsonObject> _visible = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+
+        var locationId = AppState.CurrentSession?.Location?.Id;
+        if (string.IsNullOrWhiteSpace(locationId))
+        {
+            _error = "No location selected.";
+            _shipments = [];
+            _visible = [];
+            _loading = false;
+            return;
+        }
+
+        try
+        {
+            _shipments = JsonNodeHelpers.ToObjectList(await ApiClient.GetShipmentsReadyToPackAsync(locationId, "PENDING")).ToList();
+            _visible = _shipments;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _shipments = [];
+            _visible = [];
+        }
+
+        _loading = false;
+    }
+
+    private void ResetSearch()
+    {
+        _searchTerm = string.Empty;
+        _visible = _shipments;
+    }
+
+    private void ApplySearch()
+    {
+        if (string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            _visible = _shipments;
+            return;
+        }
+
+        var term = _searchTerm.Trim().ToLowerInvariant();
+
+        JsonObject? ExactMatch(JsonObject shipment)
+        {
+            var exactShipmentNo = JsonNodeHelpers.Get(shipment, "shipmentNumber", string.Empty).ToLowerInvariant() == term;
+            if (exactShipmentNo) return shipment;
+
+            var containers = JsonNodeHelpers.ToObjectList(shipment["availableContainers"]);
+            var exactContainer = containers.FirstOrDefault(c => JsonNodeHelpers.Get(c, "containerNumber", string.Empty).ToLowerInvariant() == term);
+            if (exactContainer is not null) return shipment;
+
+            var packingLocNo = JsonNodeHelpers.Get(shipment, "packingStatusDetails.packingLocation.locationNumber", string.Empty).ToLowerInvariant() == term;
+            var packingLocName = JsonNodeHelpers.Get(shipment, "packingStatusDetails.packingLocation.name", string.Empty).ToLowerInvariant() == term;
+            if (packingLocNo || packingLocName) return shipment;
+
+            return null;
+        }
+
+        var exact = _shipments.Select(ExactMatch).FirstOrDefault(x => x is not null);
+        if (exact is not null)
+        {
+            var id = JsonNodeHelpers.Get(exact, "id", string.Empty);
+            Navigation.NavigateTo($"/packing/{id}");
+            return;
+        }
+
+        _visible = _shipments.Where(shipment =>
+        {
+            var byShipmentNo = JsonNodeHelpers.Get(shipment, "shipmentNumber", string.Empty).ToLowerInvariant().Contains(term);
+
+            var byContainer = JsonNodeHelpers.ToObjectList(shipment["availableContainers"]) 
+                .Any(c => JsonNodeHelpers.Get(c, "containerNumber", string.Empty).ToLowerInvariant().Contains(term));
+
+            var byLotOrProduct = JsonNodeHelpers.ToObjectList(shipment["shipmentItems"]).Any(item =>
+                JsonNodeHelpers.Get(item, "lotNumber", string.Empty).ToLowerInvariant().Contains(term)
+                || JsonNodeHelpers.Get(item, "inventoryItem.lotNumber", string.Empty).ToLowerInvariant().Contains(term)
+                || JsonNodeHelpers.Get(item, "inventoryItem.product.productCode", string.Empty).ToLowerInvariant().Contains(term)
+                || JsonNodeHelpers.Get(item, "inventoryItem.product.name", string.Empty).ToLowerInvariant().Contains(term));
+
+            var byPackingLocation = JsonNodeHelpers.Get(shipment, "packingStatusDetails.packingLocation.locationNumber", string.Empty).ToLowerInvariant().Contains(term)
+                || JsonNodeHelpers.Get(shipment, "packingStatusDetails.packingLocation.name", string.Empty).ToLowerInvariant().Contains(term);
+
+            return byShipmentNo || byContainer || byLotOrProduct || byPackingLocation;
+        }).ToList();
+
+        if (_visible.Count == 0)
+        {
+            _error = $"No shipment associated with the given identifier: {_searchTerm}";
+            _visible = _shipments;
+        }
+    }
+}

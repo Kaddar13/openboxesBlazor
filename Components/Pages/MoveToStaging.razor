@@ -1,0 +1,49 @@
+@page "/move-to-staging"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject AppState AppState
+@inject NavigationManager Navigation
+
+<PageTitle>Move To Staging</PageTitle>
+
+<h1>Move To Staging</h1>
+<p>Vue initiale basée sur les stock movements OUTBOUND / PICKED.</p>
+
+@if (!string.IsNullOrWhiteSpace(_error)) { <div class="alert alert-danger">@_error</div> }
+@if (_loading) { <p>Loading picked orders...</p> }
+else
+{
+    <table class="table table-striped">
+        <thead><tr><th>Identifier</th><th>Status</th><th>Origin</th><th>Destination</th></tr></thead>
+        <tbody>
+        @foreach (var item in _items)
+        {
+            <tr>
+                <td>@JsonNodeHelpers.Get(item, "identifier")</td>
+                <td>@JsonNodeHelpers.Get(item, "status")</td>
+                <td>@JsonNodeHelpers.Get(item, "origin.name")</td>
+                <td>@JsonNodeHelpers.Get(item, "destination.name")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private IReadOnlyList<JsonObject> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null) { Navigation.NavigateTo("/login", true); return; }
+
+        var locationId = AppState.CurrentSession?.Location?.Id;
+        if (string.IsNullOrWhiteSpace(locationId)) { _error = "No location selected."; _loading = false; return; }
+
+        try { _items = JsonNodeHelpers.ToObjectList(await ApiClient.GetStockMovementsAsync("OUTBOUND", "PICKED", locationId)); }
+        catch (Exception ex) { _error = ex.Message; }
+        _loading = false;
+    }
+}

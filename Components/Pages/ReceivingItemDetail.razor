@@ -1,0 +1,331 @@
+@page "/receiving/{ShipmentId}/item/{ShipmentItemId}"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject AppState AppState
+@inject NavigationManager Navigation
+
+<PageTitle>Receive Detail</PageTitle>
+
+<h1>Receive Detail</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="alert alert-success">@_message</div>
+}
+
+@if (_loading)
+{
+    <p>Loading...</p>
+}
+else if (_shipmentItem is null)
+{
+    <div class="ob-empty-state"><p>Shipment item not found.</p></div>
+}
+else
+{
+    var shipmentFallback = _shipment ?? new JsonObject();
+
+    <div class="ob-card">
+        <div class="d-flex gap-2 flex-wrap">
+            <span class="badge bg-light text-dark border">@JsonNodeHelpers.Get(_shipmentItem, "product.productCode", JsonNodeHelpers.Get(_shipmentItem, "productCode"))</span>
+            <span class="badge bg-light text-dark border">Expiration Date: @JsonNodeHelpers.Get(_shipmentItem, "expirationDate", "Never")</span>
+        </div>
+        <hr />
+        <h2>@JsonNodeHelpers.Get(_shipmentItem, "product.name")</h2>
+        <div class="ob-muted">@JsonNodeHelpers.Get(shipmentFallback, "shipment.name", JsonNodeHelpers.Get(shipmentFallback, "name"))</div>
+        <hr />
+        <div class="row">
+            <div class="col-6"><span class="ob-muted">Shipment Number</span><div>@JsonNodeHelpers.Get(shipmentFallback, "shipment.shipmentNumber", JsonNodeHelpers.Get(shipmentFallback, "shipmentNumber"))</div></div>
+            <div class="col-6"><span class="ob-muted">Lot / Serial Number</span><div>@JsonNodeHelpers.Get(_shipmentItem, "lotNumber", "Default")</div></div>
+        </div>
+        <hr />
+        <div class="d-flex gap-2 flex-wrap">
+            <span class="badge bg-light text-dark border">Shipped: @JsonNodeHelpers.Get(_shipmentItem, "quantityShipped", "0")</span>
+            <span class="badge bg-light text-dark border">Remaining: @JsonNodeHelpers.Get(_shipmentItem, "quantityRemaining", "0")</span>
+            <span class="badge bg-light text-dark border">Received: @JsonNodeHelpers.Get(_shipmentItem, "quantityReceived", "0")</span>
+        </div>
+    </div>
+
+    <div class="ob-card">
+        <div class="row g-2">
+            <div class="col-12 col-md-3">
+                <label class="form-label">Quantity to Receive</label>
+                <input type="number" min="0" class="form-control" @bind="_quantity" />
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label">Cancel Remaining</label>
+                <select class="form-select" @bind="_cancelRemaining">
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-6">
+                <label class="form-label">Receiving Location</label>
+                <select class="form-select" @bind="_receivingLocationId">
+                    @foreach (var loc in _internalLocations)
+                    {
+                        <option value="@JsonNodeHelpers.Get(loc, "id", string.Empty)">@JsonNodeHelpers.Get(loc, "name")</option>
+                    }
+                </select>
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Lot Number</label>
+                <input class="form-control" @bind="_lotNumber" />
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Lot Status</label>
+                <select class="form-select" @bind="_lotStatus">
+                    <option value="">Select lot status</option>
+                    @foreach (var status in _lotStatuses)
+                    {
+                        <option value="@status">@status</option>
+                    }
+                </select>
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Expiration Date</label>
+                <input class="form-control" @bind="_expirationDate" placeholder="MM/DD/YYYY" />
+            </div>
+            <div class="col-12">
+                <label class="form-label">Comments</label>
+                <input class="form-control" @bind="_comments" />
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-ob-primary" @onclick="OnReceive" disabled="@_submitting">@(_submitting ? "Receiving..." : "Receive")</button>
+            <a class="btn btn-outline-secondary" href="/receiving/@ShipmentId">Back</a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string ShipmentId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string ShipmentItemId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private bool _submitting;
+    private string? _error;
+    private string? _message;
+
+    private JsonObject? _shipment;
+    private JsonObject? _shipmentItem;
+    private List<JsonObject> _internalLocations = [];
+
+    private int _quantity;
+    private bool _cancelRemaining;
+    private string _receivingLocationId = string.Empty;
+    private string _lotNumber = string.Empty;
+    private string? _expirationDate;
+    private string _comments = string.Empty;
+    private string _lotStatus = string.Empty;
+    private readonly string[] _lotStatuses = ["APPROVED", "RECALLED", "ON_HOLD", "QUARANTINED", "EXPIRED", "RESERVED", "DAMAGED"];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            _shipment = await ApiClient.GetPartialReceivingAsync(ShipmentId) as JsonObject;
+            var containerItems = JsonNodeHelpers.ToObjectList(_shipment?["containers"])
+                .SelectMany(c => JsonNodeHelpers.ToObjectList(c["shipmentItems"]))
+                .ToList();
+
+            _shipmentItem = containerItems.FirstOrDefault(x =>
+            {
+                var sid = JsonNodeHelpers.Get(x, "shipmentItemId", JsonNodeHelpers.Get(x, "id", string.Empty));
+                return sid == ShipmentItemId;
+            });
+
+            if (_shipmentItem is not null)
+            {
+                _quantity = int.TryParse(JsonNodeHelpers.Get(_shipmentItem, "quantityRemaining", "0"), out var q) ? q : 0;
+                _lotNumber = JsonNodeHelpers.Get(_shipmentItem, "lotNumber", string.Empty);
+                _expirationDate = JsonNodeHelpers.Get(_shipmentItem, "expirationDate", string.Empty);
+                _receivingLocationId = JsonNodeHelpers.Get(_shipmentItem, "binLocation.id", string.Empty);
+            }
+
+            var currentLocationId = AppState.CurrentSession?.Location?.Id;
+            if (!string.IsNullOrWhiteSpace(currentLocationId))
+            {
+                var internalData = await ApiClient.SearchInternalLocationsAsync("", currentLocationId);
+                _internalLocations = JsonNodeHelpers.ToObjectList(internalData?["data"] ?? internalData).ToList();
+            }
+
+            var created = await ApiClient.CreateReceivingBinLocationAsync(ShipmentId);
+            var createdLoc = created?["data"] as JsonObject;
+            if (createdLoc is not null)
+            {
+                var createdId = JsonNodeHelpers.Get(createdLoc, "id", string.Empty);
+                if (!string.IsNullOrWhiteSpace(createdId) && !_internalLocations.Any(x => JsonNodeHelpers.Get(x, "id", string.Empty) == createdId))
+                {
+                    _internalLocations.Add(createdLoc);
+                }
+                _receivingLocationId = createdId;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+
+        _loading = false;
+    }
+
+    private async Task OnReceive()
+    {
+        _error = null;
+        _message = null;
+
+        var remaining = int.TryParse(JsonNodeHelpers.Get(_shipmentItem ?? new JsonObject(), "quantityRemaining", "0"), out var r) ? r : 0;
+
+        if (_quantity <= 0 && !_cancelRemaining)
+        {
+            _error = "You cannot receive 0 without cancelling remaining.";
+            return;
+        }
+
+        if (_quantity > remaining)
+        {
+            _error = "You cannot receive more than the remaining quantity.";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_expirationDate) && string.IsNullOrWhiteSpace(_lotNumber))
+        {
+            _error = "Please fill the Lot Number if you want to set the Expiration Date.";
+            return;
+        }
+
+        var containerId = JsonNodeHelpers.Get(_shipmentItem ?? new JsonObject(), "container.id", string.Empty);
+        var productId = JsonNodeHelpers.Get(_shipmentItem ?? new JsonObject(), "product.id", string.Empty);
+        var recipientId = JsonNodeHelpers.Get(_shipmentItem ?? new JsonObject(), "recipient.id", string.Empty);
+
+        var pendingPayload = new
+        {
+            receiptId = "",
+            receiptStatus = "PENDING",
+            shipmentId = ShipmentId,
+            containers = new object[]
+            {
+                new
+                {
+                    container = new { id = containerId },
+                    shipmentItems = new object[]
+                    {
+                        new
+                        {
+                            receiptItemId = "",
+                            shipmentItemId = ShipmentItemId,
+                            product = new { id = productId },
+                            binLocation = _receivingLocationId,
+                            lotNumber = _lotNumber,
+                            expirationDate = _expirationDate,
+                            recipient = recipientId,
+                            quantityReceiving = _quantity,
+                            cancelRemaining = _cancelRemaining,
+                            quantityOnHand = "",
+                            comment = _comments,
+                            mobile = true,
+                            lotStatusCode = _lotStatus
+                        }
+                    }
+                }
+            }
+        };
+
+        _submitting = true;
+        try
+        {
+            var pendingResponse = await ApiClient.SubmitPartialReceivingAsync(ShipmentId, pendingPayload) as JsonObject;
+            var data = pendingResponse?["data"] as JsonObject;
+            if (data is null)
+            {
+                _error = "No data received from the server.";
+                _submitting = false;
+                return;
+            }
+
+            var completePayload = new
+            {
+                isShipmentFromPurchaseOrder = data["isShipmentFromPurchaseOrder"],
+                receiptStatus = "COMPLETED",
+                containers = BuildCompleteContainers(data["containers"]),
+                dateShipped = data["dateShipped"],
+                description = data["description"],
+                destination = new { id = JsonNodeHelpers.Get(data, "destination.id", string.Empty) },
+                origin = new { id = JsonNodeHelpers.Get(data, "origin.id", string.Empty) },
+                receiptId = data["receiptId"],
+                shipmentStatus = data["shipmentStatus"],
+                shipment = new
+                {
+                    name = JsonNodeHelpers.Get(data, "shipment.name", string.Empty),
+                    shipmentNumber = JsonNodeHelpers.Get(data, "shipment.shipmentNumber", string.Empty)
+                },
+                requisition = data["requisition"],
+                recipient = JsonNodeHelpers.Get(data, "recipient.id", JsonNodeHelpers.Get(data, "recipient", string.Empty))
+            };
+
+            await ApiClient.SubmitPartialReceivingAsync(ShipmentId, completePayload);
+            _message = "Received successfully.";
+            Navigation.NavigateTo($"/receiving/{ShipmentId}", true);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+
+        _submitting = false;
+    }
+
+    private static object[] BuildCompleteContainers(JsonNode? containersNode)
+    {
+        var containers = JsonNodeHelpers.ToObjectList(containersNode);
+        return containers.Select(container =>
+        {
+            var rest = container.DeepClone() as JsonObject ?? new JsonObject();
+            rest.Remove("container");
+            rest.Remove("container.id");
+            rest.Remove("container.name");
+            rest.Remove("container.type");
+
+            var merged = new JsonObject
+            {
+                ["container"] = new JsonObject
+                {
+                    ["id"] = JsonNodeHelpers.Get(container, "container.id", JsonNodeHelpers.Get(container, "container.id", string.Empty)),
+                    ["name"] = JsonNodeHelpers.Get(container, "container.name", string.Empty),
+                    ["type"] = JsonNodeHelpers.Get(container, "container.type", string.Empty)
+                }
+            };
+
+            foreach (var kv in rest)
+            {
+                merged[kv.Key] = kv.Value?.DeepClone();
+            }
+
+            return (object)merged;
+        }).ToArray();
+    }
+}

@@ -1,0 +1,79 @@
+@page "/sortation-putaway"
+@inject SessionManager SessionManager
+@inject OpenBoxesApiClient ApiClient
+@inject AppState AppState
+@inject SortationFlowState SortationFlow
+@inject NavigationManager Navigation
+
+<PageTitle>Sortation Putaway Entry</PageTitle>
+
+<h1>Scan Putaway Container ID</h1>
+<p>Point your barcode scanner at the container ID or type the code manually.</p>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="ob-card">
+    <div class="row g-2">
+        <div class="col-12 col-md-8"><input class="form-control" @bind="_containerId" placeholder="Putaway Container ID" /></div>
+        <div class="col-12 col-md-4 d-grid"><button class="btn btn-ob-primary" @onclick="PerformScan">Scan</button></div>
+    </div>
+</div>
+
+@code {
+    private string _containerId = string.Empty;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var session = await SessionManager.EnsureSessionAsync();
+        if (session?.User is null)
+        {
+            Navigation.NavigateTo("/login", true);
+        }
+    }
+
+    private async Task PerformScan()
+    {
+        _error = null;
+
+        var locationId = AppState.CurrentSession?.Location?.Id;
+        if (string.IsNullOrWhiteSpace(locationId))
+        {
+            _error = "No active location.";
+            return;
+        }
+
+        try
+        {
+            var response = await ApiClient.GetPutawayDetailsByContainerAsync(locationId, _containerId.Trim());
+            var allTasks = JsonNodeHelpers.ToObjectList(response?["data"] ?? response);
+            var filtered = allTasks.Where(t =>
+            {
+                var s = JsonNodeHelpers.Get(t, "status", string.Empty).ToUpperInvariant();
+                return s is "IN_PROGRESS" or "PENDING";
+            }).ToList();
+
+            if (filtered.Count == 0)
+            {
+                _error = $"No IN_PROGRESS/PENDING tasks found for container {_containerId}";
+            }
+            else
+            {
+                SortationFlow.Product = null;
+                SortationFlow.TaskList = filtered;
+                SortationFlow.CurrentTaskIndex = 0;
+                SortationFlow.IsDirectPutaway = false;
+                Navigation.NavigateTo("/sortation-putaway/location");
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+
+        _containerId = string.Empty;
+    }
+}
