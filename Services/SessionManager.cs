@@ -55,6 +55,21 @@ public sealed class SessionManager
             _debug.Info("Session", $"Login attempt for '{username}'");
             await _apiClient.LoginAsync(username, password, cancellationToken);
             var session = await _apiClient.GetSessionAsync(cancellationToken);
+
+            if (session?.User is null)
+            {
+                // OpenBoxes can return 500 on getAppContext for some user/location states.
+                // Keep the authenticated cookie and let the user continue to location selection.
+                _debug.Error("Session", "getAppContext unavailable after successful login, applying degraded session fallback.");
+                session = new Session
+                {
+                    User = new User
+                    {
+                        Username = username
+                    }
+                };
+            }
+
             _appState.SetSession(session);
             _appState.ClearError();
             _sessionLoadAttempted = true;
