@@ -12,9 +12,17 @@
         <img src="images/logo.png" alt="OpenBoxes logo" class="ob-login-logo" />
     </div>
 
+    <div class="alert alert-secondary" role="status">
+        API: <strong>@ApiClient.BaseUrl</strong>
+    </div>
+
     @if (!string.IsNullOrWhiteSpace(_error))
     {
         <div class="alert alert-danger" role="alert">@_error</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(_info))
+    {
+        <div class="alert alert-info" role="status">@_info</div>
     }
 
     <EditForm Model="_form" OnValidSubmit="OnSubmit" class="ob-login-form">
@@ -34,6 +42,9 @@
             <button type="submit" class="btn btn-ob-primary" disabled="@_loading">
                 @(_loading ? "Logging in..." : "Login")
             </button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="TestConnection" disabled="@_testing">
+                @(_testing ? "Testing..." : "Test API Connection")
+            </button>
             <a class="btn btn-link" href="settings">Settings</a>
         </div>
     </EditForm>
@@ -42,7 +53,9 @@
 @code {
     private LoginForm _form = new();
     private bool _loading;
+    private bool _testing;
     private string? _error;
+    private string? _info;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -69,6 +82,7 @@
     {
         _loading = true;
         _error = null;
+        _info = null;
 
         var success = await SessionManager.LoginAsync(_form.Username, _form.Password);
         if (success)
@@ -81,6 +95,33 @@
         }
 
         _loading = false;
+    }
+
+    private async Task TestConnection()
+    {
+        _testing = true;
+        _error = null;
+        _info = null;
+
+        try
+        {
+            var reachable = await ApiClient.CanReachServerAsync();
+            if (!reachable)
+            {
+                _error = $"API unreachable: {ApiClient.BaseUrl}";
+                return;
+            }
+
+            _info = "API reachable. You can proceed with login.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.InnerException?.Message ?? ex.Message;
+        }
+        finally
+        {
+            _testing = false;
+        }
     }
 
     private sealed class LoginForm
