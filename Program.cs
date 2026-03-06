@@ -17,6 +17,12 @@ builder.Services.AddRazorComponents()
 
 var app = builder.Build();
 
+var configuredPathBase = builder.Configuration["PathBase"];
+if (!string.IsNullOrWhiteSpace(configuredPathBase))
+{
+    app.UsePathBase(configuredPathBase);
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
