@@ -11,6 +11,10 @@
 {
     <div class="alert alert-success" role="alert">@_message</div>
 }
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
 
 <div class="ob-card">
     <h2>Server Connection</h2>
@@ -74,6 +78,7 @@
     private bool _groupLocationEntries;
     private int _barcodeDebounceTime = 100;
     private string? _message;
+    private string? _error;
     private List<DashboardEntryDefinition> _dashboardEntries = [];
     private Dictionary<string, bool> _visibility = new();
 
@@ -151,22 +156,86 @@
 
     private async Task SaveServerUrl()
     {
-        UiSettings.Current.ServerUrl = _serverUrl.Trim();
-        ApiClient.SetBaseUrl(UiSettings.Current.ServerUrl);
-        await UiSettings.SaveAsync();
-        _message = "Server URL saved.";
+        _message = null;
+        _error = null;
+
+        var normalized = NormalizeServerUrl(_serverUrl);
+        if (normalized is null)
+        {
+            _error = "Server URL must be an absolute http(s) URL.";
+            return;
+        }
+
+        try
+        {
+            UiSettings.Current.ServerUrl = normalized;
+            ApiClient.SetBaseUrl(normalized);
+            await ApiClient.GetSessionAsync();
+            await UiSettings.SaveAsync();
+            _serverUrl = normalized;
+            _message = "Server URL saved and reachable.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Unable to apply server URL: {GetErrorMessage(ex)}";
+        }
     }
 
     private async Task SaveAll()
     {
-        UiSettings.Current.ServerUrl = _serverUrl.Trim();
+        _message = null;
+        _error = null;
+
+        var normalized = NormalizeServerUrl(_serverUrl);
+        if (normalized is null)
+        {
+            _error = "Server URL must be an absolute http(s) URL.";
+            return;
+        }
+
+        UiSettings.Current.ServerUrl = normalized;
         UiSettings.Current.GroupLocationEntries = _groupLocationEntries;
         UiSettings.Current.BarcodeScanDebounceTime = Math.Max(0, _barcodeDebounceTime);
         UiSettings.Current.DashboardEntriesVisibility = new Dictionary<string, bool>(_visibility);
         UiSettings.Current.DashboardEntriesOrder = _dashboardEntries.Select(x => x.Key).ToList();
 
-        ApiClient.SetBaseUrl(UiSettings.Current.ServerUrl);
-        await UiSettings.SaveAsync();
-        _message = "Settings saved and applied.";
+        try
+        {
+            ApiClient.SetBaseUrl(UiSettings.Current.ServerUrl);
+            await ApiClient.GetSessionAsync();
+            await UiSettings.SaveAsync();
+            _serverUrl = normalized;
+            _message = "Settings saved and applied.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Unable to save settings: {GetErrorMessage(ex)}";
+        }
+    }
+
+    private static string? NormalizeServerUrl(string value)
+    {
+        var trimmed = value.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+        {
+            return null;
+        }
+
+        return trimmed.TrimEnd('/');
+    }
+
+    private static string GetErrorMessage(Exception ex)
+    {
+        return ex.InnerException?.Message ?? ex.Message;
     }
 }
