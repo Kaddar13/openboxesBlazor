@@ -59,7 +59,7 @@ else
                 <div class="col-6"><span class="ob-muted">Packing Location</span><div>@packingLocation</div></div>
                 <div class="col-6"><span class="ob-muted">Loading Location</span><div>@loadingLocation</div></div>
             </div>
-            <div class="mt-3"><a class="btn btn-ob-primary btn-sm" href="/packing/@id">Open Details</a></div>
+            <div class="mt-3"><a class="btn btn-ob-primary btn-sm" href="packing/@id">Open Details</a></div>
         </div>
     }
 }
@@ -76,7 +76,7 @@ else
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("/login", true);
+            Navigation.NavigateTo("login", true);
             return;
         }
 

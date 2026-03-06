@@ -10,7 +10,7 @@
     <div class="ob-empty-state">
         <h2>Product Not Found</h2>
         <p>The product or task is not available.</p>
-        <a class="btn btn-outline-secondary" href="/sortation">Back</a>
+        <a class="btn btn-outline-secondary" href="sortation">Back</a>
     </div>
 }
 else
@@ -52,7 +52,7 @@ else
 
         <div class="d-flex gap-2 mt-3">
             <button class="btn btn-ob-primary" @onclick="Confirm">Confirm</button>
-            <a class="btn btn-outline-secondary" href="/sortation">Cancel</a>
+            <a class="btn btn-outline-secondary" href="sortation">Cancel</a>
         </div>
     </div>
 }
@@ -113,7 +113,7 @@ else
         {
             SortationFlow.TaskList = [_task];
             SortationFlow.CurrentTaskIndex = 0;
-            Navigation.NavigateTo("/sortation-putaway/location");
+            Navigation.NavigateTo("sortation-putaway/location");
             return;
         }
 

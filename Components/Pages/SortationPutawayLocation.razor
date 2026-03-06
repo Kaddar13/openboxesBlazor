@@ -119,7 +119,7 @@ else
             return;
         }
 
-        Navigation.NavigateTo("/sortation-putaway/product");
+        Navigation.NavigateTo("sortation-putaway/product");
     }
 
     private void Skip()
@@ -128,7 +128,7 @@ else
         if (next < SortationFlow.TaskList.Count)
         {
             SortationFlow.CurrentTaskIndex = next;
-            Navigation.NavigateTo("/sortation-putaway/location", true);
+            Navigation.NavigateTo("sortation-putaway/location", true);
         }
         else
         {

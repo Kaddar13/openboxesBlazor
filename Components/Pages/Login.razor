@@ -34,7 +34,7 @@
             <button type="submit" class="btn btn-ob-primary" disabled="@_loading">
                 @(_loading ? "Logging in..." : "Login")
             </button>
-            <a class="btn btn-link" href="/settings">Settings</a>
+            <a class="btn btn-link" href="settings">Settings</a>
         </div>
     </EditForm>
 </div>
@@ -55,7 +55,7 @@
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is not null)
         {
-            Navigation.NavigateTo("/dashboard", true);
+            Navigation.NavigateTo("dashboard", true);
         }
 
         StateHasChanged();
@@ -69,7 +69,7 @@
         var success = await SessionManager.LoginAsync(_form.Username, _form.Password);
         if (success)
         {
-            Navigation.NavigateTo("/dashboard", true);
+            Navigation.NavigateTo("dashboard", true);
         }
         else
         {

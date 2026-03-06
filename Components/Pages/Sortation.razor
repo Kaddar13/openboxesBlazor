@@ -31,7 +31,7 @@
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("/login", true);
+            Navigation.NavigateTo("login", true);
         }
     }
 
@@ -91,7 +91,7 @@
                 }
                 else
                 {
-                    Navigation.NavigateTo("/sortation/tasks");
+                    Navigation.NavigateTo("sortation/tasks");
                 }
             }
         }

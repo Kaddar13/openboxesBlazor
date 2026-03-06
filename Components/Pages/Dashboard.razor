@@ -17,7 +17,7 @@ else if (_entries.Count == 0)
     <div class="ob-empty-state">
         <h2>No Dashboard Entries</h2>
         <p>Please check your settings to enable dashboard entries.</p>
-        <a class="btn btn-ob-primary" href="/settings">Go To Settings</a>
+        <a class="btn btn-ob-primary" href="settings">Go To Settings</a>
     </div>
 }
 else
@@ -48,7 +48,7 @@ else
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("/login", true);
+            Navigation.NavigateTo("login", true);
             return;
         }
 

@@ -85,7 +85,7 @@ else
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("/login", true);
+            Navigation.NavigateTo("login", true);
             return;
         }
 
@@ -130,7 +130,7 @@ else
             await ApiClient.SetCurrentLocationAsync(locationId);
             var session = await SessionManager.EnsureSessionAsync(forceRefresh: true);
             _currentLocationId = session?.Location?.Id;
-            Navigation.NavigateTo("/dashboard", true);
+            Navigation.NavigateTo("dashboard", true);
         }
         catch (Exception ex)
         {

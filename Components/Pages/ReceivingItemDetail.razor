@@ -98,7 +98,7 @@ else
 
         <div class="d-flex gap-2 mt-3">
             <button class="btn btn-ob-primary" @onclick="OnReceive" disabled="@_submitting">@(_submitting ? "Receiving..." : "Receive")</button>
-            <a class="btn btn-outline-secondary" href="/receiving/@ShipmentId">Back</a>
+            <a class="btn btn-outline-secondary" href="receiving/@ShipmentId">Back</a>
         </div>
     </div>
 }
@@ -133,7 +133,7 @@ else
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("/login", true);
+            Navigation.NavigateTo("login", true);
             return;
         }
 

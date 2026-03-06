@@ -86,7 +86,7 @@ else
     }
 
     <div class="d-flex gap-2">
-        <a class="btn btn-outline-secondary" href="/products">Back</a>
+        <a class="btn btn-outline-secondary" href="products">Back</a>
         <button class="btn btn-ob-primary" @onclick="PrintLabel">Print Barcode Label</button>
     </div>
 }
@@ -107,7 +107,7 @@ else
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("/login", true);
+            Navigation.NavigateTo("login", true);
             return;
         }
 

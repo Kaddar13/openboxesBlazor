@@ -76,13 +76,13 @@ else
                     <span class="badge bg-light text-dark border">Items Shipped: @shippedItems</span>
                 </div>
                 <div class="mt-3">
-                    <a class="btn btn-ob-primary btn-sm" href="/loading/@ShipmentId/container/@containerId">Load Container</a>
+                    <a class="btn btn-ob-primary btn-sm" href="loading/@ShipmentId/container/@containerId">Load Container</a>
                 </div>
             </div>
         }
     }
 
-    <a class="btn btn-outline-secondary" href="/loading">Back</a>
+    <a class="btn btn-outline-secondary" href="loading">Back</a>
 }
 
 @code {
@@ -101,7 +101,7 @@ else
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("/login", true);
+            Navigation.NavigateTo("login", true);
             return;
         }
 

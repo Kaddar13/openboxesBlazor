@@ -62,7 +62,7 @@ else
                     <td>@product.Name</td>
                     <td>@product.Description</td>
                     <td>
-                        <a class="btn btn-sm btn-ob-primary" href="/products/@product.Id">Details</a>
+                        <a class="btn btn-sm btn-ob-primary" href="products/@product.Id">Details</a>
                     </td>
                 </tr>
             }
@@ -83,7 +83,7 @@ else
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("/login", true);
+            Navigation.NavigateTo("login", true);
             return;
         }
 

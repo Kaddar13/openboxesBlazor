@@ -31,7 +31,7 @@
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("/login", true);
+            Navigation.NavigateTo("login", true);
         }
     }
 
@@ -66,7 +66,7 @@
                 SortationFlow.TaskList = filtered;
                 SortationFlow.CurrentTaskIndex = 0;
                 SortationFlow.IsDirectPutaway = false;
-                Navigation.NavigateTo("/sortation-putaway/location");
+                Navigation.NavigateTo("sortation-putaway/location");
             }
         }
         catch (Exception ex)

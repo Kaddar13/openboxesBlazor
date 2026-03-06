@@ -5,7 +5,7 @@
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="/dashboard">OpenBoxes</a>
+        <a class="navbar-brand" href="dashboard">OpenBoxes</a>
     </div>
 </div>
 
@@ -21,12 +21,12 @@
     </div>
 
     <nav class="nav flex-column">
-        <div class="nav-item px-3"><NavLink class="nav-link" href="/locations">Choose Location</NavLink></div>
-        <div class="nav-item px-3"><NavLink class="nav-link" href="/dashboard">Dashboard</NavLink></div>
+        <div class="nav-item px-3"><NavLink class="nav-link" href="locations">Choose Location</NavLink></div>
+        <div class="nav-item px-3"><NavLink class="nav-link" href="dashboard">Dashboard</NavLink></div>
     </nav>
 
     <div class="menu-bottom px-3">
-        <a class="btn btn-outline-light w-100 mb-2" href="/settings">Settings</a>
+        <a class="btn btn-outline-light w-100 mb-2" href="settings">Settings</a>
         <button class="btn btn-light w-100" @onclick="OnLogout">Logout</button>
     </div>
 </div>
@@ -42,7 +42,7 @@
     private async Task OnLogout()
     {
         await SessionManager.LogoutAsync();
-        Navigation.NavigateTo("/login", true);
+        Navigation.NavigateTo("login", true);
     }
 
     public void Dispose()
