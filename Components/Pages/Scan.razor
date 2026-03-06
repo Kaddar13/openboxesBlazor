@@ -27,7 +27,7 @@
     protected override async Task OnInitializedAsync()
     {
         var session = await SessionManager.EnsureSessionAsync();
-        if (session?.User is null) { Navigation.NavigateTo("login", true); }
+        if (session?.User is null) { Navigation.NavigateTo("login"); }
     }
 
     private async Task Search()

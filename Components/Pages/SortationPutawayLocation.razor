@@ -128,11 +128,11 @@ else
         if (next < SortationFlow.TaskList.Count)
         {
             SortationFlow.CurrentTaskIndex = next;
-            Navigation.NavigateTo("sortation-putaway/location", true);
+            Navigation.NavigateTo("sortation-putaway/location");
         }
         else
         {
-            Navigation.NavigateTo(SortationFlow.IsDirectPutaway ? "sortation" : "sortation-putaway", true);
+            Navigation.NavigateTo(SortationFlow.IsDirectPutaway ? "sortation" : "sortation-putaway");
         }
     }
 }

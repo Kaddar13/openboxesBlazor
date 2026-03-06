@@ -81,7 +81,7 @@ else
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("login", true);
+            Navigation.NavigateTo("login");
             return;
         }
 
@@ -146,7 +146,7 @@ else
         {
             await ApiClient.UpdateContainerStatusAsync(ContainerId, payload);
             _message = "Loaded container successfully.";
-            Navigation.NavigateTo($"loading/{ShipmentId}", true);
+            Navigation.NavigateTo($"loading/{ShipmentId}");
         }
         catch (Exception ex)
         {

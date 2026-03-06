@@ -42,7 +42,7 @@
     private async Task OnLogout()
     {
         await SessionManager.LogoutAsync();
-        Navigation.NavigateTo("login", true);
+        Navigation.NavigateTo("login");
     }
 
     public void Dispose()

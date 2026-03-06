@@ -69,7 +69,7 @@ else
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is null)
         {
-            Navigation.NavigateTo("login", true);
+            Navigation.NavigateTo("login");
             return;
         }
 

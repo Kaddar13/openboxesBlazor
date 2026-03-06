@@ -68,7 +68,7 @@
         var session = await SessionManager.EnsureSessionAsync();
         if (session?.User is not null)
         {
-            Navigation.NavigateTo("dashboard", true);
+            Navigation.NavigateTo("dashboard");
         }
         else if (!string.IsNullOrWhiteSpace(AppState.LastError))
         {
@@ -87,7 +87,7 @@
         var success = await SessionManager.LoginAsync(_form.Username, _form.Password);
         if (success)
         {
-            Navigation.NavigateTo("dashboard", true);
+            Navigation.NavigateTo("dashboard");
         }
         else
         {

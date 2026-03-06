@@ -108,7 +108,7 @@ else
             await ApiClient.PatchPutawayTaskAsync(facilityId, taskId, payload);
             _message = "Sortation successful.";
             SortationFlow.Reset();
-            Navigation.NavigateTo("sortation", true);
+            Navigation.NavigateTo("sortation");
         }
         catch (Exception ex)
         {
