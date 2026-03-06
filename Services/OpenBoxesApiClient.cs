@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
@@ -16,13 +17,15 @@ public sealed class OpenBoxesApiClient : IDisposable
     private HttpClient? _client;
     private CookieContainer? _cookieContainer;
     private string _baseUrl = string.Empty;
+    private readonly DebugLogService _debug;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
-    public OpenBoxesApiClient(IOptions<OpenBoxesApiOptions> options)
+    public OpenBoxesApiClient(IOptions<OpenBoxesApiOptions> options, DebugLogService debug)
     {
+        _debug = debug;
         var apiOptions = options.Value;
         if (!string.IsNullOrWhiteSpace(apiOptions.BaseUrl))
         {
@@ -66,6 +69,7 @@ public sealed class OpenBoxesApiClient : IDisposable
         _client?.Dispose();
         _cookieContainer = new CookieContainer();
         _client = BuildClient(_baseUrl, _cookieContainer);
+        _debug.Info("ApiClient", $"Base URL set to {_baseUrl}");
     }
 
     public async Task<Session?> GetSessionAsync(CancellationToken cancellationToken = default)
@@ -374,6 +378,8 @@ public sealed class OpenBoxesApiClient : IDisposable
         object? payload,
         CancellationToken cancellationToken)
     {
+        var sw = Stopwatch.StartNew();
+        _debug.Info("HTTP", $"{method} {endpoint}");
         using var request = new HttpRequestMessage(method, endpoint);
 
         if (payload is not null)
@@ -388,10 +394,12 @@ public sealed class OpenBoxesApiClient : IDisposable
         }
         catch (Exception ex)
         {
+            _debug.Error("HTTP", $"{method} {endpoint} failed in {sw.ElapsedMilliseconds}ms: {ex.Message}");
             throw BuildNetworkError(ex, endpoint);
         }
         using (response)
         {
+            _debug.Info("HTTP", $"{method} {endpoint} -> {(int)response.StatusCode} in {sw.ElapsedMilliseconds}ms");
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -423,6 +431,8 @@ public sealed class OpenBoxesApiClient : IDisposable
         object? payload,
         CancellationToken cancellationToken)
     {
+        var sw = Stopwatch.StartNew();
+        _debug.Info("HTTP", $"{method} {endpoint}");
         using var request = new HttpRequestMessage(method, endpoint);
 
         if (payload is not null)
@@ -437,10 +447,12 @@ public sealed class OpenBoxesApiClient : IDisposable
         }
         catch (Exception ex)
         {
+            _debug.Error("HTTP", $"{method} {endpoint} failed in {sw.ElapsedMilliseconds}ms: {ex.Message}");
             throw BuildNetworkError(ex, endpoint);
         }
         using (response)
         {
+            _debug.Info("HTTP", $"{method} {endpoint} -> {(int)response.StatusCode} in {sw.ElapsedMilliseconds}ms");
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -484,7 +496,9 @@ public sealed class OpenBoxesApiClient : IDisposable
 
     private InvalidOperationException BuildNetworkError(Exception ex, string endpoint)
     {
-        var url = new Uri(new Uri(_baseUrl), endpoint).ToString();
+        var url = string.IsNullOrWhiteSpace(_baseUrl)
+            ? endpoint
+            : new Uri(new Uri(_baseUrl), endpoint).ToString();
         return ex switch
         {
             TaskCanceledException => new InvalidOperationException($"Request timeout while calling {url}", ex),
@@ -495,8 +509,14 @@ public sealed class OpenBoxesApiClient : IDisposable
 
     private HttpClient GetClient()
     {
-        return _client ?? throw new InvalidOperationException(
-            "API base URL is not configured. Set it in Settings before using the app.");
+        if (_client is not null)
+        {
+            return _client;
+        }
+
+        const string message = "API base URL is not configured. Set it in Settings before using the app.";
+        _debug.Error("ApiClient", message);
+        throw new InvalidOperationException(message);
     }
 
     private static string? NormalizeBaseUrl(string value)

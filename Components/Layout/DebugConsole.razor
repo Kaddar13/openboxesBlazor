@@ -1,0 +1,93 @@
+@implements IDisposable
+@inject DebugLogService DebugLogs
+@inject AppState AppState
+@inject OpenBoxesApiClient ApiClient
+@inject NavigationManager Navigation
+
+<div class="ob-debug-toggle">
+    <button class="btn btn-sm btn-dark" @onclick="Toggle">
+        @(_open ? "Hide Debug" : "Show Debug")
+    </button>
+</div>
+
+@if (_open)
+{
+    <section class="ob-debug-panel">
+        <div class="ob-debug-header">
+            <strong>Debug Console</strong>
+            <div class="ob-debug-actions">
+                <button class="btn btn-sm btn-outline-light" @onclick="Refresh">Refresh</button>
+                <button class="btn btn-sm btn-outline-warning" @onclick="Clear">Clear</button>
+            </div>
+        </div>
+
+        <div class="ob-debug-meta">
+            <div><strong>Route:</strong> @Navigation.Uri</div>
+            <div><strong>API:</strong> @ApiClient.BaseUrl</div>
+            <div><strong>Auth:</strong> @(AppState.IsAuthenticated ? "Authenticated" : "Anonymous")</div>
+            <div><strong>Last Error:</strong> @(string.IsNullOrWhiteSpace(AppState.LastError) ? "-" : AppState.LastError)</div>
+        </div>
+
+        <div class="ob-debug-logs">
+            @if (_entries.Count == 0)
+            {
+                <div class="ob-debug-empty">No logs yet.</div>
+            }
+            else
+            {
+                @foreach (var entry in _entries)
+                {
+                    <div class="ob-debug-line @(entry.Level == "ERROR" ? "err" : "ok")">
+                        <span class="ts">@entry.Timestamp.ToString("HH:mm:ss.fff")</span>
+                        <span class="lvl">[@entry.Level]</span>
+                        <span class="src">[@entry.Source]</span>
+                        <span class="msg">@entry.Message</span>
+                    </div>
+                }
+            }
+        </div>
+    </section>
+}
+
+@code {
+    private bool _open;
+    private IReadOnlyList<DebugLogEntry> _entries = [];
+
+    protected override void OnInitialized()
+    {
+        DebugLogs.Changed += OnChanged;
+        AppState.StateChanged += OnChanged;
+        _entries = DebugLogs.GetEntries();
+    }
+
+    private void Toggle()
+    {
+        _open = !_open;
+        if (_open)
+        {
+            Refresh();
+        }
+    }
+
+    private void Refresh()
+    {
+        _entries = DebugLogs.GetEntries();
+    }
+
+    private void Clear()
+    {
+        DebugLogs.Clear();
+    }
+
+    private void OnChanged()
+    {
+        _entries = DebugLogs.GetEntries();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        DebugLogs.Changed -= OnChanged;
+        AppState.StateChanged -= OnChanged;
+    }
+}

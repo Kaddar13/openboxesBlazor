@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<OpenBoxesApiOptions>(builder.Configuration.GetSection("OpenBoxesApi"));
 
 builder.Services.AddScoped<AppState>();
+builder.Services.AddScoped<DebugLogService>();
 builder.Services.AddScoped<OpenBoxesApiClient>();
 builder.Services.AddScoped<SessionManager>();
 builder.Services.AddScoped<UiSettingsService>();
