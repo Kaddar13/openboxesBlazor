@@ -87,7 +87,7 @@
                 if (tasks.Count == 1)
                 {
                     var taskId = JsonNodeHelpers.Get(tasks[0], "id", string.Empty);
-                    Navigation.NavigateTo($"/sortation/quantity/{taskId}");
+                    Navigation.NavigateTo($"sortation/quantity/{taskId}");
                 }
                 else
                 {

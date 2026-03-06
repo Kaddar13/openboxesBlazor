@@ -128,7 +128,7 @@ else
         if (exactByLpn is not null)
         {
             var sid = JsonNodeHelpers.Get(exactByLpn, "id", string.Empty);
-            Navigation.NavigateTo($"/loading/{sid}");
+            Navigation.NavigateTo($"loading/{sid}");
             return;
         }
 
@@ -141,7 +141,7 @@ else
         if (_visible.Count == 1)
         {
             var sid = JsonNodeHelpers.Get(_visible[0], "id", string.Empty);
-            Navigation.NavigateTo($"/loading/{sid}");
+            Navigation.NavigateTo($"loading/{sid}");
         }
     }
 }

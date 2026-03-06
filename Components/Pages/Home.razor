@@ -19,6 +19,6 @@
 
         await UiSettings.EnsureLoadedAsync(ApiClient.BaseUrl);
         var session = await SessionManager.EnsureSessionAsync();
-        Navigation.NavigateTo(session?.User is null ? "/login" : "/dashboard", true);
+        Navigation.NavigateTo(session?.User is null ? "login" : "dashboard", true);
     }
 }

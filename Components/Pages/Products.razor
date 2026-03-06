@@ -135,7 +135,7 @@ else
             _products = await ApiClient.SearchProductsByNameAsync(_searchName.Trim());
             if (_products.Count == 1)
             {
-                Navigation.NavigateTo($"/products/{_products[0].Id}");
+                Navigation.NavigateTo($"products/{_products[0].Id}");
                 return;
             }
             if (_products.Count == 0)
@@ -166,7 +166,7 @@ else
             _products = await ApiClient.SearchProductByCodeAsync(_searchCode.Trim());
             if (_products.Count == 1)
             {
-                Navigation.NavigateTo($"/products/{_products[0].Id}");
+                Navigation.NavigateTo($"products/{_products[0].Id}");
                 return;
             }
             if (_products.Count == 0)
@@ -200,7 +200,7 @@ else
 
             if (_products.Count == 1)
             {
-                Navigation.NavigateTo($"/products/{_products[0].Id}");
+                Navigation.NavigateTo($"products/{_products[0].Id}");
                 return;
             }
 

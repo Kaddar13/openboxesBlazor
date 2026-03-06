@@ -289,7 +289,7 @@ else
 
             await ApiClient.SubmitPartialReceivingAsync(ShipmentId, completePayload);
             _message = "Received successfully.";
-            Navigation.NavigateTo($"/receiving/{ShipmentId}", true);
+            Navigation.NavigateTo($"receiving/{ShipmentId}", true);
         }
         catch (Exception ex)
         {

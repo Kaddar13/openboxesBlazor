@@ -149,7 +149,7 @@ else
         if (exact is not null)
         {
             var id = JsonNodeHelpers.Get(exact, "id", string.Empty);
-            Navigation.NavigateTo($"/packing/{id}");
+            Navigation.NavigateTo($"packing/{id}");
             return;
         }
 

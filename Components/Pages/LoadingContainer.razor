@@ -146,7 +146,7 @@ else
         {
             await ApiClient.UpdateContainerStatusAsync(ContainerId, payload);
             _message = "Loaded container successfully.";
-            Navigation.NavigateTo($"/loading/{ShipmentId}", true);
+            Navigation.NavigateTo($"loading/{ShipmentId}", true);
         }
         catch (Exception ex)
         {
