@@ -3,4 +3,5 @@ namespace OpenBoxesMobile.Blazor.Options;
 public sealed class OpenBoxesApiOptions
 {
     public string BaseUrl { get; set; } = string.Empty;
+    public bool UseProxy { get; set; }
 }

@@ -17,6 +17,7 @@ public sealed class OpenBoxesApiClient : IDisposable
     private HttpClient? _client;
     private CookieContainer? _cookieContainer;
     private string _baseUrl = string.Empty;
+    private readonly bool _useProxy;
     private readonly DebugLogService _debug;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -27,6 +28,7 @@ public sealed class OpenBoxesApiClient : IDisposable
     {
         _debug = debug;
         var apiOptions = options.Value;
+        _useProxy = apiOptions.UseProxy;
         if (!string.IsNullOrWhiteSpace(apiOptions.BaseUrl))
         {
             SetBaseUrl(apiOptions.BaseUrl);
@@ -68,8 +70,8 @@ public sealed class OpenBoxesApiClient : IDisposable
 
         _client?.Dispose();
         _cookieContainer = new CookieContainer();
-        _client = BuildClient(_baseUrl, _cookieContainer);
-        _debug.Info("ApiClient", $"Base URL set to {_baseUrl}");
+        _client = BuildClient(_baseUrl, _cookieContainer, _useProxy);
+        _debug.Info("ApiClient", $"Base URL set to {_baseUrl} (UseProxy={_useProxy})");
     }
 
     public async Task<Session?> GetSessionAsync(CancellationToken cancellationToken = default)
@@ -478,13 +480,14 @@ public sealed class OpenBoxesApiClient : IDisposable
         _client?.Dispose();
     }
 
-    private static HttpClient BuildClient(string baseUrl, CookieContainer cookieContainer)
+    private static HttpClient BuildClient(string baseUrl, CookieContainer cookieContainer, bool useProxy)
     {
         var handler = new HttpClientHandler
         {
             CookieContainer = cookieContainer,
             UseCookies = true,
-            AllowAutoRedirect = true
+            AllowAutoRedirect = true,
+            UseProxy = useProxy
         };
 
         return new HttpClient(handler)
